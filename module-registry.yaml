@@ -1,0 +1,189 @@
+# EDT Modules Registry
+# 重大事件驱动交易系统 - 模块注册中心
+
+registry:
+  # ========== 情报层模块 ==========
+  
+  - name: EventCapture
+    version: 1.0.0
+    category: input
+    description: "事件截获 - 关键词/VIX异动触发"
+    input_schema: event_input.json
+    output_schema: event_output.json
+    dependencies: [Logger, DataValidator]
+    config: edt-modules-config.yaml
+    test_case: tests/test_event_capture.yaml
+    
+  - name: SourceRanker
+    version: 1.0.0
+    category: 情报
+    description: "来源分级 A/B/C"
+    input_schema: event_input.json
+    output_schema: source_ranker.json
+    dependencies: [Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_source_ranker.yaml
+    
+  - name: SeverityEstimator
+    version: 1.0.0
+    category: 情报
+    description: "严重度判定 E0-E4"
+    input_schema: severity_input.json
+    output_schema: severity_output.json
+    dependencies: [Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_severity_estimator.yaml
+    
+  - name: EventObjectifier
+    version: 1.0.0
+    category: 情报
+    description: "新闻→事件对象标准化"
+    input_schema: event_input.json
+    output_schema: event_output.json
+    dependencies: [EventCapture, SourceRanker, SeverityEstimator]
+    config: edt-modules-config.yaml
+    test_case: tests/test_event_objectifier.yaml
+
+  # ========== 分析层模块 ==========
+  
+  - name: LifecycleManager
+    version: 1.0.0
+    category: 分析
+    description: "生命周期状态维护"
+    input_schema: lifecycle_input.json
+    output_schema: lifecycle_output.json
+    dependencies: [EventObjectifier, Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_lifecycle_manager.yaml
+    
+  - name: FatigueCalculator
+    version: 1.0.0
+    category: 分析
+    description: "叙事疲劳度计算"
+    input_schema: fatigue_input.json
+    output_schema: fatigue_output.json
+    dependencies: [LifecycleManager, CacheManager]
+    config: edt-modules-config.yaml
+    test_case: tests/test_fatigue_calculator.yaml
+    
+  - name: ConductionMapper
+    version: 1.0.0
+    category: 分析
+    description: "宏观→板块→个股传导映射"
+    input_schema: conduction_input.json
+    output_schema: conduction_output.json
+    dependencies: [EventObjectifier, Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_conduction_mapper.yaml
+    
+  - name: MarketValidator
+    version: 1.0.0
+    category: 分析
+    description: "市场验证 - 价格/量能/联动"
+    input_schema: validation_input.json
+    output_schema: validation_output.json
+    dependencies: [ConductionMapper, Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_market_validator.yaml
+    
+  - name: SignalScorer
+    version: 1.0.0
+    category: 分析
+    description: "综合信号评分"
+    input_schema: signal_scorer.json
+    output_schema: signal_scorer_output.json
+    dependencies: [FatigueCalculator, MarketValidator]
+    config: edt-modules-config.yaml
+    test_case: tests/test_signal_scorer.yaml
+
+  # ========== 执行层模块 ==========
+  
+  - name: LiquidityChecker
+    version: 1.0.0
+    category: 执行
+    description: "流动性状态检测 Green/Yellow/Red"
+    input_schema: liquidity_input.json
+    output_schema: liquidity_output.json
+    dependencies: [Logger]
+    config: edt-modules-config.yaml
+    test_case: tests/test_liquidity_checker.yaml
+    
+  - name: RiskGatekeeper
+    version: 1.0.0
+    category: 执行
+    description: "风控闸门 - 决策优先级树"
+    input_schema: risk_gatekeeper.json
+    output_schema: risk_gatekeeper_output.json
+    dependencies: [SignalScorer, LiquidityChecker]
+    config: edt-modules-config.yaml
+    test_case: tests/test_risk_gatekeeper.yaml
+    
+  - name: PositionSizer
+    version: 1.0.0
+    category: 执行
+    description: "仓位计算与分批策略"
+    input_schema: position_input.json
+    output_schema: position_output.json
+    dependencies: [RiskGatekeeper]
+    config: edt-modules-config.yaml
+    test_case: tests/test_position_sizer.yaml
+    
+  - name: ExitManager
+    version: 1.0.0
+    category: 执行
+    description: "退出策略 - 止损/止盈"
+    input_schema: exit_input.json
+    output_schema: exit_output.json
+    dependencies: [PositionSizer]
+    config: edt-modules-config.yaml
+    test_case: tests/test_exit_manager.yaml
+
+  # ========== 辅助模块 ==========
+  
+  - name: Logger
+    version: 1.0.0
+    category: 工具
+    description: "日志与审计记录"
+    input_schema: logger_input.json
+    output_schema: logger_output.json
+    dependencies: []
+    config: edt-modules-config.yaml
+    
+  - name: CacheManager
+    version: 1.0.0
+    category: 工具
+    description: "事件缓存与去重"
+    input_schema: cache_input.json
+    output_schema: cache_output.json
+    dependencies: [Logger]
+    config: edt-modules-config.yaml
+    
+  - name: RetryHandler
+    version: 1.0.0
+    category: 工具
+    description: "API重试与超时处理"
+    input_schema: retry_input.json
+    output_schema: retry_output.json
+    dependencies: [Logger]
+    config: edt-modules-config.yaml
+
+# 模块调用关系图
+dependencies_graph:
+  - "EventCapture -> SourceRanker -> SeverityEstimator -> EventObjectifier"
+  - "EventObjectifier -> LifecycleManager -> FatigueCalculator"
+  - "EventObjectifier -> ConductionMapper -> MarketValidator"
+  - "MarketValidator + FatigueCalculator -> SignalScorer"
+  - "SignalScorer -> LiquidityChecker -> RiskGatekeeper -> PositionSizer -> ExitManager"
+  
+# 版本兼容规则
+version_compatibility:
+  major_bump: "不兼容API变更"
+  minor_bump: "向后兼容新功能"
+  patch: "向后兼容Bug修复"
+
+# Registry 协作治理规则（C-Registry 主审）
+registry_governance:
+  owner: "member-c"
+  reviewers_required: 1
+  rule: "A/B 对 module-registry.yaml 的变更，必须经 member-c 主审后合入 integration/main。"
+  freeze_window: "每个 Sprint 开始冻结一次 registry 版本，冻结期间禁止临时字段漂移。"

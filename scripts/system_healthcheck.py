@@ -1,0 +1,446 @@
+#!/usr/bin/env python3
+"""
+Project-wide health check entrypoint.
+
+Strong mode lifecycle:
+1. health-system self-check
+2. health-system self-heal
+3. health-system re-check
+4. project-wide health check
+"""
+
+from __future__ import annotations
+
+import json
+import argparse
+import py_compile
+import subprocess
+import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = ROOT / "scripts"
+CONFIG_PATH = ROOT / "configs" / "edt-modules-config.yaml"
+REGISTRY_PATH = ROOT / "module-registry.yaml"
+DOC_PATH = ROOT / "docs" / "system_health_standard.md"
+MANUAL_PATH = ROOT / "docs" / "system_health_manual.md"
+LOGS_DIR = ROOT / "logs"
+REPORT_PATH = LOGS_DIR / "system_health_report.json"
+
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+try:
+    import yaml
+except Exception as exc:  # noqa: BLE001
+    print(f"FATAL: missing yaml dependency: {exc}")
+    raise SystemExit(2)
+
+
+STATUS_ORDER = {"GREEN": 0, "YELLOW": 1, "RED": 2}
+
+
+@dataclass
+class CheckResult:
+    name: str
+    status: str
+    summary: str
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    commands: list[str] = field(default_factory=list)
+
+
+@dataclass
+class StageResult:
+    name: str
+    status: str
+    summary: str
+    checks: list[CheckResult] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+
+
+def worst_status(values: list[str]) -> str:
+    return max(values, key=lambda item: STATUS_ORDER[item]) if values else "GREEN"
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def run_command(args: list[str], cwd: Path) -> tuple[int, str]:
+    proc = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return proc.returncode, output.strip()
+
+
+def safe_print(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoded = text.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8")
+        print(encoded)
+
+
+def render_checks(title: str, checks: list[CheckResult]) -> None:
+    safe_print(title)
+    for item in checks:
+        safe_print(f"[{item.status}] {item.name}: {item.summary}")
+        for error in item.errors:
+            safe_print(f"  ERROR: {error}")
+        for warning in item.warnings:
+            safe_print(f"  WARN: {warning}")
+
+
+def check_env() -> CheckResult:
+    result = CheckResult(name="ENV", status="GREEN", summary="Runtime environment looks healthy.")
+    py_version = sys.version.split()[0]
+    result.evidence.append(f"python={py_version}")
+
+    code, output = run_command([sys.executable, "-m", "pytest", "-q"], ROOT)
+    result.commands.append(f"{sys.executable} -m pytest -q")
+    if code != 0:
+        result.status = "RED"
+        result.summary = "Default pytest regression entrypoint is not healthy."
+        result.errors.append("`python -m pytest -q` failed in current environment.")
+        if output:
+            result.evidence.append(output.splitlines()[0])
+
+    return result
+
+
+def check_config() -> CheckResult:
+    result = CheckResult(name="CONFIG", status="GREEN", summary="Configuration loads and is consumed by modules.")
+
+    try:
+        cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # noqa: BLE001
+        result.status = "RED"
+        result.summary = "Config file is not readable as UTF-8 YAML."
+        result.errors.append(str(exc))
+        return result
+
+    modules = cfg.get("modules", {})
+    if not modules:
+        result.status = "RED"
+        result.summary = "Top-level modules config is empty."
+        result.errors.append("`configs/edt-modules-config.yaml` produced empty modules config.")
+        return result
+
+    result.evidence.append(f"module_count={len(modules)}")
+
+    try:
+        from intel_modules import SourceRankerModule
+    except Exception as exc:  # noqa: BLE001
+        result.status = "RED"
+        result.summary = "Unable to import config-driven modules for health validation."
+        result.errors.append(str(exc))
+        return result
+
+    ranker = SourceRankerModule()
+    if not ranker.config:
+        result.status = "RED"
+        result.summary = "Config-driven modules are silently running with empty config."
+        result.errors.append("`SourceRankerModule().config` is empty.")
+        return result
+
+    sample = ranker.run({"source_url": "https://www.reuters.com/markets/us/example"})
+    rank = sample.data.get("rank")
+    result.evidence.append(f"reuters_rank={rank}")
+    if rank != "B":
+        result.status = "RED"
+        result.summary = "SourceRanker is not consuming ranking config correctly."
+        result.errors.append("Expected Reuters to resolve to rank `B`.")
+
+    return result
+
+
+def check_chain() -> CheckResult:
+    result = CheckResult(name="CHAIN", status="GREEN", summary="Main chain points at current implementations.")
+
+    full_workflow_text = read_text(ROOT / "scripts" / "full_workflow_runner.py")
+    workflow_text = read_text(ROOT / "scripts" / "workflow_runner.py")
+
+    if "from analysis_modules import AnalysisPipeline" in full_workflow_text:
+        result.status = "RED"
+        result.summary = "Full chain still points at legacy analysis aggregation."
+        result.errors.append("`full_workflow_runner.py` imports `analysis_modules.AnalysisPipeline`.")
+
+    if "from edt_module_base import ModuleStatus, SignalScorer" in workflow_text:
+        result.status = "RED"
+        result.summary = "Execution chain still uses demo SignalScorer implementation."
+        result.errors.append("`workflow_runner.py` imports `SignalScorer` from `edt_module_base`.")
+
+    if '"source_rank"' not in full_workflow_text and '"needs_escalation"' not in full_workflow_text:
+        if result.status != "RED":
+            result.status = "YELLOW"
+            result.summary = "Source trust constraints are not visible in full-chain inputs."
+        result.warnings.append("Full-chain assembly does not appear to propagate `source_rank` or `needs_escalation`.")
+
+    return result
+
+
+def check_contract() -> CheckResult:
+    result = CheckResult(name="CONTRACT", status="GREEN", summary="Registry, schema, and test references are structurally consistent.")
+
+    registry = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8")) or {}
+    entries = registry.get("registry", [])
+    missing_files: list[str] = []
+    placeholder_refs: list[str] = []
+    empty_tests: list[str] = []
+
+    for entry in entries:
+        for field_name in ("input_schema", "output_schema"):
+            ref = entry.get(field_name)
+            if not ref:
+                continue
+            schema_path = ROOT / "schemas" / ref
+            if not schema_path.exists():
+                missing_files.append(str(schema_path))
+                continue
+            content = read_text(schema_path)
+            if "placeholder schema" in content or "TODO: define contract" in content:
+                placeholder_refs.append(f"{entry['name']} -> {schema_path.name}")
+
+        test_ref = entry.get("test_case")
+        if not test_ref:
+            continue
+        test_path = ROOT / test_ref
+        if not test_path.exists():
+            missing_files.append(str(test_path))
+            continue
+        if test_path.suffix == ".yaml":
+            payload = yaml.safe_load(test_path.read_text(encoding="utf-8")) or {}
+            if payload.get("cases") == []:
+                empty_tests.append(test_path.name)
+
+    if missing_files:
+        result.status = "RED"
+        result.summary = "Registry references missing files."
+        result.errors.extend(sorted(set(missing_files)))
+
+    if placeholder_refs:
+        result.status = "RED"
+        result.summary = "Registry still points at placeholder schemas."
+        result.errors.extend(sorted(set(placeholder_refs)))
+
+    if empty_tests and result.status != "RED":
+        result.status = "YELLOW"
+        result.summary = "Some registry-linked YAML tests are still empty shells."
+
+    if empty_tests:
+        result.warnings.extend(sorted(set(empty_tests)))
+
+    result.evidence.append(f"registry_entries={len(entries)}")
+    return result
+
+
+def check_test_runtime() -> CheckResult:
+    result = CheckResult(name="TEST", status="GREEN", summary="Core runtime checks pass.")
+
+    commands = [
+        [sys.executable, "tests/run_analysis_interface_checks.py"],
+        [sys.executable, "scripts/verify_execution_no_pytest.py"],
+        [sys.executable, "scripts/full_workflow_runner.py"],
+    ]
+
+    for cmd in commands:
+        code, output = run_command(cmd, ROOT)
+        result.commands.append(" ".join(cmd))
+        if code != 0:
+            result.status = "RED"
+            result.summary = "One or more core runtime checks failed."
+            result.errors.append(" ".join(cmd))
+            if output:
+                result.evidence.append(output.splitlines()[-1])
+
+    return result
+
+
+def check_recovery() -> CheckResult:
+    result = CheckResult(name="RECOVERY", status="GREEN", summary="Health system self-check and recovery entrypoints are present.")
+    required = [
+        DOC_PATH,
+        MANUAL_PATH,
+        ROOT / "scripts" / "system_healthcheck.py",
+        ROOT / "scripts" / "system_autofix.py",
+    ]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        result.status = "RED"
+        result.summary = "Recovery tooling is incomplete."
+        result.errors.extend(missing)
+        return result
+
+    for script_path in (ROOT / "scripts" / "system_healthcheck.py", ROOT / "scripts" / "system_autofix.py"):
+        try:
+            py_compile.compile(str(script_path), doraise=True)
+            result.evidence.append(f"compiled={script_path.name}")
+        except Exception as exc:  # noqa: BLE001
+            result.status = "RED"
+            result.summary = "Recovery tooling exists but is not syntactically healthy."
+            result.errors.append(f"{script_path.name}: {exc}")
+    return result
+
+
+def run_health_system_self_checks() -> list[CheckResult]:
+    checks: list[CheckResult] = []
+
+    presence = CheckResult(name="SELF_FILES", status="GREEN", summary="Health-system core files are present.")
+    required = [
+        ROOT / "scripts" / "system_healthcheck.py",
+        ROOT / "scripts" / "system_autofix.py",
+        DOC_PATH,
+        MANUAL_PATH,
+    ]
+    missing = [str(path) for path in required if not path.exists()]
+    if missing:
+        presence.status = "RED"
+        presence.summary = "Health-system core files are missing."
+        presence.errors.extend(missing)
+    checks.append(presence)
+
+    compile_check = CheckResult(name="SELF_COMPILE", status="GREEN", summary="Health-system scripts compile.")
+    for script_path in (ROOT / "scripts" / "system_healthcheck.py", ROOT / "scripts" / "system_autofix.py"):
+        try:
+            py_compile.compile(str(script_path), doraise=True)
+            compile_check.evidence.append(f"compiled={script_path.name}")
+        except Exception as exc:  # noqa: BLE001
+            compile_check.status = "RED"
+            compile_check.summary = "One or more health-system scripts fail to compile."
+            compile_check.errors.append(f"{script_path.name}: {exc}")
+    checks.append(compile_check)
+
+    autofix_dry_run = CheckResult(name="SELF_AUTOFIX_DRYRUN", status="GREEN", summary="Autofix dry-run executes.")
+    autofix_path = ROOT / "scripts" / "system_autofix.py"
+    if autofix_path.exists():
+        code, output = run_command([sys.executable, str(autofix_path)], ROOT)
+        autofix_dry_run.commands.append(f"{sys.executable} {autofix_path}")
+        if code != 0:
+            autofix_dry_run.status = "RED"
+            autofix_dry_run.summary = "Autofix dry-run failed."
+            autofix_dry_run.errors.append("system_autofix dry-run returned non-zero exit code.")
+            if output:
+                autofix_dry_run.evidence.append(output.splitlines()[-1])
+    else:
+        autofix_dry_run.status = "RED"
+        autofix_dry_run.summary = "Autofix script is missing."
+        autofix_dry_run.errors.append(str(autofix_path))
+    checks.append(autofix_dry_run)
+
+    return checks
+
+
+def maybe_self_heal(enabled: bool) -> StageResult:
+    if not enabled:
+        return StageResult(name="SELF_HEAL", status="GREEN", summary="Self-heal stage was skipped by configuration.")
+    autofix_path = ROOT / "scripts" / "system_autofix.py"
+    if not autofix_path.exists():
+        return StageResult(
+            name="SELF_HEAL",
+            status="RED",
+            summary="Self-heal could not start because autofix is missing.",
+            evidence=[str(autofix_path)],
+        )
+    code, output = run_command([sys.executable, str(autofix_path), "--apply"], ROOT)
+    stage = StageResult(
+        name="SELF_HEAL",
+        status="GREEN" if code == 0 else "RED",
+        summary="Health-system self-heal completed." if code == 0 else "Health-system self-heal failed.",
+        evidence=[f"command={sys.executable} {autofix_path} --apply"],
+    )
+    if output:
+        stage.evidence.append(output)
+    if code != 0:
+        stage.evidence.append(f"exit_code={code}")
+    return stage
+
+
+def build_stage(name: str, summary: str, checks: list[CheckResult]) -> StageResult:
+    return StageResult(
+        name=name,
+        status=worst_status([item.status for item in checks]),
+        summary=summary,
+        checks=checks,
+    )
+
+
+def run_project_checks() -> list[CheckResult]:
+    return [
+        check_env(),
+        check_config(),
+        check_chain(),
+        check_contract(),
+        check_test_runtime(),
+        check_recovery(),
+    ]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run health-system self-check and project-wide health checks.")
+    parser.add_argument("--self-heal", action="store_true", help="Attempt self-heal between self-check and project checks.")
+    parser.add_argument("--self-only", action="store_true", help="Only run health-system self-check stages.")
+    args = parser.parse_args()
+
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    self_checks_pre = run_health_system_self_checks()
+    stage_self_check = build_stage("SELF_CHECK", "Health-system self-check before any repair.", self_checks_pre)
+
+    stage_self_heal = StageResult(name="SELF_HEAL", status="SKIP", summary="Self-heal not requested.")
+    if args.self_heal and stage_self_check.status != "GREEN":
+        stage_self_heal = maybe_self_heal(True)
+
+    self_checks_post = run_health_system_self_checks()
+    stage_self_recheck = build_stage("SELF_RECHECK", "Health-system self-check after self-heal.", self_checks_post)
+
+    stage_project = StageResult(name="PROJECT_CHECK", status="SKIP", summary="Project-wide health check skipped.")
+    project_checks: list[CheckResult] = []
+    if not args.self_only:
+        project_checks = run_project_checks()
+        stage_project = build_stage("PROJECT_CHECK", "Project-wide health check after health-system validation.", project_checks)
+
+    stage_statuses = [stage_self_check.status, stage_self_recheck.status]
+    if stage_self_heal.status != "SKIP":
+        stage_statuses.append(stage_self_heal.status)
+    if stage_project.status != "SKIP":
+        stage_statuses.append(stage_project.status)
+    normalized_statuses = [s for s in stage_statuses if s in STATUS_ORDER]
+    overall = worst_status(normalized_statuses)
+
+    report = {
+        "overall_status": overall,
+        "root": str(ROOT),
+        "python": sys.version,
+        "self_heal": args.self_heal,
+        "self_only": args.self_only,
+        "stages": [
+            asdict(stage_self_check),
+            asdict(stage_self_heal),
+            asdict(stage_self_recheck),
+            asdict(stage_project),
+        ],
+    }
+    REPORT_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    safe_print(f"OVERALL: {overall}")
+    safe_print(f"[{stage_self_check.status}] {stage_self_check.name}: {stage_self_check.summary}")
+    render_checks("SELF-CHECK DETAILS:", stage_self_check.checks)
+    safe_print(f"[{stage_self_heal.status}] {stage_self_heal.name}: {stage_self_heal.summary}")
+    for evidence in stage_self_heal.evidence:
+        safe_print(f"  INFO: {evidence}")
+    safe_print(f"[{stage_self_recheck.status}] {stage_self_recheck.name}: {stage_self_recheck.summary}")
+    render_checks("SELF-RECHECK DETAILS:", stage_self_recheck.checks)
+    if not args.self_only:
+        safe_print(f"[{stage_project.status}] {stage_project.name}: {stage_project.summary}")
+        render_checks("PROJECT-CHECK DETAILS:", stage_project.checks)
+    safe_print(f"REPORT: {REPORT_PATH}")
+
+    return 0 if overall == "GREEN" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MarketValidator Output",
+  "description": "MarketValidator 输出契约：市场验证分项得分、A1 与验证状态。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "price_score",
+    "volume_score",
+    "linkage_score",
+    "persistence_score",
+    "divergence_score",
+    "A1",
+    "validation_state",
+    "failed_checks",
+    "needs_manual_review"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "price_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "volume_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 15
+    },
+    "linkage_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "persistence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 25
+    },
+    "divergence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "A1": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "validation_state": {
+      "type": "string",
+      "enum": ["validated", "partially_validated", "not_validated", "counter_validated"]
+    },
+    "failed_checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "price_confirmation",
+          "volume_confirmation",
+          "cross_asset_linkage",
+          "persistence",
+          "winner_loser_divergence"
+        ]
+      }
+    },
+    "validation_notes": {
+      "type": "string"
+    },
+    "needs_manual_review": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-C-20260330-001.V1.0",
+      "price_score": 20,
+      "volume_score": 15,
+      "linkage_score": 20,
+      "persistence_score": 25,
+      "divergence_score": 20,
+      "A1": 100,
+      "validation_state": "validated",
+      "failed_checks": [],
+      "validation_notes": "价格、量能、联动与持续性均验证通过",
+      "needs_manual_review": false
+    }
+  ]
+}

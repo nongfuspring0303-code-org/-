@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExitManager Output",
+  "description": "Output contract for stop loss and take-profit plan.",
+  "type": "object",
+  "required": ["hard_stop", "take_profit_levels", "dynamic_triggers"],
+  "properties": {
+    "hard_stop": {
+      "type": "number"
+    },
+    "take_profit_levels": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "dynamic_triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "action"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["trailing", "time"]
+          },
+          "action": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

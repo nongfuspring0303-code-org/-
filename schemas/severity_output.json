@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Severity Output Schema",
+  "description": "Severity estimator output payload.",
+  "type": "object",
+  "required": ["severity", "A0"],
+  "properties": {
+    "severity": {
+      "type": "string",
+      "enum": ["E0", "E1", "E2", "E3", "E4"]
+    },
+    "A0": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "additionalProperties": true
+}

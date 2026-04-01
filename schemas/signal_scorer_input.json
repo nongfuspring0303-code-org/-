@@ -1,0 +1,238 @@
+{
+  "module": "SignalScorer",
+  "version": "1.0.0",
+  "description": "综合信号评分 - 基于A0/A-1/A1/A1.5/A0.5计算最终Score",
+  
+  "input": {
+    "type": "object",
+    "required": ["A0", "A-1", "A1", "A1.5", "A0.5", "severity", "fatigue_index", "correlation"],
+    "properties": {
+      "A0": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "事件强度 (E4=40, E3=30, E2=20, E1=10, E0=0)"
+      },
+      "A-1": {
+        "type": "number", 
+        "minimum": 0,
+        "maximum": 100,
+        "description": "预期差强度 (Gap/预期波幅×100)"
+      },
+      "A1": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "市场验证强度 (Checklist通过度)"
+      },
+      "A1.5": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "主导市场强度 (领先资产涨幅×10)"
+      },
+      "A0.5": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "流动性惩罚 (Green=0, Yellow=50, Red=100)"
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["E0", "E1", "E2", "E3", "E4"],
+        "description": "事件严重度"
+      },
+      "fatigue_index": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "疲劳度"
+      },
+      "correlation": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "description": "跨资产相关性"
+      },
+      "is_crowded": {
+        "type": "boolean",
+        "description": "是否拥挤交易"
+      },
+      "narrative_mode": {
+        "type": "string",
+        "enum": ["Narrative-Driven", "Fact-Driven"],
+        "description": "叙事/事实驱动模式"
+      },
+      "policy_intervention": {
+        "type": "string",
+        "enum": ["NONE", "WEAK", "MEDIUM", "STRONG"],
+        "description": "政策干预强度"
+      },
+      "weights_version": {
+        "type": "string",
+        "description": "权重版本 (用于审计)"
+      }
+    }
+  },
+  
+  "output": {
+    "type": "object",
+    "properties": {
+      "score": {
+        "type": "number",
+        "minimum": -100,
+        "maximum": 100,
+        "description": "最终综合评分"
+      },
+      "score_raw": {
+        "type": "number",
+        "description": "未裁剪的原始分数"
+      },
+      "score_tier": {
+        "type": "string",
+        "enum": ["G1", "G2", "G3", "G4", "G5"],
+        "description": "执行等级"
+      },
+      "position_pct": {
+        "type": "number",
+        "description": "建议仓位比例"
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["long", "short", "neutral", "flip_long", "flip_short"],
+        "description": "交易方向"
+      },
+      "adjustments_applied": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "应用的调整项"
+      },
+      "weight_details": {
+        "type": "object",
+        "description": "权重详情",
+        "properties": {
+          "w1_A0": {"type": "number"},
+          "w2_A-1": {"type": "number"},
+          "w3_A1": {"type": "number"},
+          "w4_A1.5": {"type": "number"},
+          "w5_A0.5": {"type": "number"},
+          "effective_A-1": {"type": "number"},
+          "fatigue_reduction": {"type": "number"}
+        }
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "评分推理"
+      }
+    }
+  },
+  
+  "error": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "enum": ["INVALID_INPUT", "MISSING_SCORES", "WEIGHT_SUM_ERROR"]
+      },
+      "message": {"type": "string"}
+    }
+  },
+  
+  "examples": [
+    {
+      "description": "标准E3事件 - Score=72, G2标准执行",
+      "input": {
+        "A0": 30,
+        "A-1": 70,
+        "A1": 78,
+        "A1.5": 60,
+        "A0.5": 0,
+        "severity": "E3",
+        "fatigue_index": 45,
+        "correlation": 0.5,
+        "is_crowded": false,
+        "narrative_mode": "Fact-Driven",
+        "policy_intervention": "NONE"
+      },
+      "output": {
+        "score": 53,
+        "score_tier": "G3",
+        "position_pct": 0.20,
+        "direction": "long",
+        "adjustments_applied": ["E3权重调整", "疲劳度折扣"],
+        "reasoning": "Score=0.25×30+0.20×70+0.25×78+0.20×60-0.10×0=53"
+      }
+    },
+    {
+      "description": "E4危机事件 - 相关性崩溃, A1.5折减",
+      "input": {
+        "A0": 40,
+        "A-1": 50,
+        "A1": 75,
+        "A1.5": 65,
+        "A0.5": 30,
+        "severity": "E4",
+        "fatigue_index": 20,
+        "correlation": 0.85,
+        "is_crowded": false,
+        "narrative_mode": "Narrative-Driven",
+        "policy_intervention": "NONE"
+      },
+      "output": {
+        "score": 57,
+        "score_tier": "G3",
+        "position_pct": 0.20,
+        "direction": "long",
+        "adjustments_applied": ["E4非线性调整", "相关性崩溃折减", "叙事模式降仓"],
+        "reasoning": "E4时A1.5按0.35折减=22.75, 相关性>0.8触发危机模式"
+      }
+    },
+    {
+      "description": "政策强干预 - 方向翻转",
+      "input": {
+        "A0": 30,
+        "A-1": 80,
+        "A1": 68,
+        "A1.5": 55,
+        "A0.5": 0,
+        "severity": "E4",
+        "fatigue_index": 30,
+        "correlation": 0.4,
+        "is_crowded": false,
+        "narrative_mode": "Fact-Driven",
+        "policy_intervention": "STRONG"
+      },
+      "output": {
+        "score": 75,
+        "score_tier": "G2",
+        "position_pct": 0.50,
+        "direction": "flip_long",
+        "adjustments_applied": ["政策干预反转+15"],
+        "reasoning": "强政策干预+A1>=60,方向从short翻转为long"
+      }
+    }
+  ],
+  
+  "config_params": {
+    "timeout": 120,
+    "default_weights": {
+      "A0": 0.25,
+      "A-1": 0.20,
+      "A1": 0.25,
+      "A1.5": 0.20,
+      "A0.5": 0.10
+    },
+    "e4_adjustments": {
+      "A-1": -0.10,
+      "A1": 0.10,
+      "A0.5": 0.10
+    },
+    "score_tiers": {
+      "G1": {"min": 80, "position": 0.80},
+      "G2": {"min": 60, "position": 0.50},
+      "G3": {"min": 40, "position": 0.20},
+      "G4": {"min": 20, "position": 0},
+      "G5": {"min": 0, "position": 0}
+    }
+  }
+}

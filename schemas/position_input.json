@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PositionSizer Input",
+  "description": "Input contract for position sizing.",
+  "type": "object",
+  "required": ["score", "liquidity_state", "risk_gate_multiplier", "account_equity"],
+  "properties": {
+    "score": {
+      "type": "number",
+      "minimum": -100,
+      "maximum": 100
+    },
+    "liquidity_state": {
+      "type": "string",
+      "enum": ["GREEN", "YELLOW", "YELLOW_STRONG", "RED"]
+    },
+    "risk_gate_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "account_equity": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

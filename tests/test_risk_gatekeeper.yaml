@@ -1,0 +1,16 @@
+module: risk_gatekeeper
+description: RiskGatekeeper 最小用例
+cases:
+  - id: RG-YAML-001
+    name: dead_force_close
+    type: abnormal
+    input:
+      event_state: "Dead"
+      fatigue_index: 20
+      liquidity_state: "GREEN"
+      correlation: 0.5
+      score: 80
+      severity: "E3"
+      A1: 70
+    expected:
+      final_action: "FORCE_CLOSE"

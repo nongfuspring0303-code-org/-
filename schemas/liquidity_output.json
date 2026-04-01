@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LiquidityChecker Output",
+  "description": "Output contract for liquidity state detection.",
+  "type": "object",
+  "required": ["liquidity_state", "spread_multiplier", "reason", "metrics"],
+  "properties": {
+    "liquidity_state": {
+      "type": "string",
+      "enum": ["GREEN", "YELLOW", "RED"]
+    },
+    "spread_multiplier": {
+      "type": "number",
+      "minimum": 0
+    },
+    "reason": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["vix", "ted", "correlation", "spread_pct"],
+      "properties": {
+        "vix": { "type": "number" },
+        "ted": { "type": "number" },
+        "correlation": { "type": "number", "minimum": -1, "maximum": 1 },
+        "spread_pct": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

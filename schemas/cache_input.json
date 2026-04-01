@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cache Input Schema",
+  "description": "Cache operation input payload.",
+  "type": "object",
+  "required": ["action", "cache_key"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["get", "put", "delete", "exists"]
+    },
+    "cache_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {},
+    "ttl_seconds": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "additionalProperties": true
+}

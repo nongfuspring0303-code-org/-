@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MarketValidator Input",
+  "description": "MarketValidator 输入契约：对传导映射进行市场验证并计算 A1。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "conduction_output",
+    "market_timestamp"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "conduction_output": {
+      "type": "object",
+      "description": "ConductionMapper 输出结果"
+    },
+    "price_changes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "volume_changes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "cross_asset_linkage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "persistence_minutes": {
+      "type": "number",
+      "minimum": 0
+    },
+    "winner_loser_dispersion": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "market_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-C-20260330-001.V1.0",
+      "conduction_output": {},
+      "price_changes": {
+        "DXY": 1.2,
+        "XLI": -1.8
+      },
+      "volume_changes": {
+        "XLI": 2.3
+      },
+      "persistence_minutes": 90,
+      "market_timestamp": "2026-03-30T15:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "trace_id": "TRC-20260402-0001",
+  "event_id": "ME-C-20260402-001.V1.0",
+  "A0": 35,
+  "A-1": 68,
+  "A1": 72,
+  "A1.5": 55,
+  "A0.5": 12,
+  "base_direction": "long",
+  "mapping_version": "factor_map_v1",
+  "policy_intervention": "NONE",
+  "schema_version": "ai_factor_map_v1",
+  "producer": "member-b",
+  "generated_at": "2026-04-02T09:32:00Z"
+}

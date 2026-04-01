@@ -1,0 +1,255 @@
+{
+  "module": "RiskGatekeeper",
+  "version": "1.0.0",
+  "description": "风控闸门 - 决策优先级树与一票否决逻辑",
+  
+  "input": {
+    "type": "object",
+    "required": ["event_state", "fatigue_index", "liquidity_state", "correlation", "score", "severity", "A1"],
+    "properties": {
+      "event_state": {
+        "type": "string",
+        "enum": ["Detected", "Verified", "Active", "Continuation", "Exhaustion", "Dead", "Archived"],
+        "description": "事件生命周期状态"
+      },
+      "fatigue_index": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "疲劳度"
+      },
+      "liquidity_state": {
+        "type": "string",
+        "enum": ["GREEN", "YELLOW", "RED"],
+        "description": "流动性状态"
+      },
+      "spread_multiplier": {
+        "type": "number",
+        "description": "价差倍数 (用于检测流动性黑洞)"
+      },
+      "correlation": {
+        "type": "number",
+        "minimum": -1,
+        "maximum": 1,
+        "description": "跨资产相关性"
+      },
+      "score": {
+        "type": "number",
+        "minimum": -100,
+        "maximum": 100,
+        "description": "综合评分"
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["E0", "E1", "E2", "E3", "E4"],
+        "description": "严重度"
+      },
+      "A1": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "市场验证得分"
+      },
+      "policy_intervention": {
+        "type": "string",
+        "enum": ["NONE", "WEAK", "MEDIUM", "STRONG"],
+        "description": "政策干预强度"
+      },
+      "is_crowded": {
+        "type": "boolean",
+        "description": "是否拥挤交易"
+      },
+      "narrative_mode": {
+        "type": "string",
+        "enum": ["Narrative-Driven", "Fact-Driven"],
+        "description": "叙事/事实驱动模式"
+      }
+    }
+  },
+  
+  "output": {
+    "type": "object",
+    "properties": {
+      "gate_decisions": {
+        "type": "array",
+        "description": "各闸门检查结果",
+        "items": {
+          "type": "object",
+          "properties": {
+            "gate": {"type": "string"},
+            "triggered": {"type": "boolean"},
+            "action": {"type": "string"},
+            "reason": {"type": "string"}
+          }
+        }
+      },
+      "final_action": {
+        "type": "string",
+        "enum": ["EXECUTE", "BLOCK", "REDUCE", "WATCH", "FORCE_CLOSE"],
+        "description": "最终执行动作"
+      },
+      "position_multiplier": {
+        "type": "number",
+        "description": "仓位系数 (0=禁止, 0.3=30%, 0.5=50%, 1.0=100%)"
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["long", "short", "neutral", "flip", "no_change"],
+        "description": "方向调整"
+      },
+      "first_triggered_gate": {
+        "type": "string",
+        "description": "首个触发的闸门 (审计用)"
+      },
+      "warnings": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "警告信息"
+      },
+      "human_confirm_required": {
+        "type": "boolean",
+        "description": "是否需要人工确认"
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "决策推理"
+      }
+    }
+  },
+  
+  "error": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "enum": ["INVALID_STATE", "CONFLICTING_GATES"]
+      },
+      "message": {"type": "string"}
+    }
+  },
+  
+  "examples": [
+    {
+      "description": "正常流程 - 通过所有闸门",
+      "input": {
+        "event_state": "Active",
+        "fatigue_index": 45,
+        "liquidity_state": "GREEN",
+        "correlation": 0.5,
+        "score": 72,
+        "severity": "E3",
+        "A1": 78,
+        "policy_intervention": "NONE",
+        "is_crowded": false,
+        "narrative_mode": "Fact-Driven"
+      },
+      "output": {
+        "gate_decisions": [
+          {"gate": "G1", "triggered": false, "action": "PASS"},
+          {"gate": "G2", "triggered": false, "action": "PASS"},
+          {"gate": "G3", "triggered": false, "action": "PASS"},
+          {"gate": "G4", "triggered": false, "action": "PASS"},
+          {"gate": "G5", "triggered": true, "action": "G2_POSITION"}
+        ],
+        "final_action": "EXECUTE",
+        "position_multiplier": 1.0,
+        "direction": "no_change",
+        "first_triggered_gate": null,
+        "human_confirm_required": false,
+        "reasoning": "所有闸门通过，Score=72落在G2区间，执行标准仓位"
+      }
+    },
+    {
+      "description": "流动性黑洞 - G1触发",
+      "input": {
+        "event_state": "Active",
+        "fatigue_index": 30,
+        "liquidity_state": "RED",
+        "spread_multiplier": 6.0,
+        "correlation": 0.6,
+        "score": 85,
+        "severity": "E4",
+        "A1": 80,
+        "policy_intervention": "NONE",
+        "is_crowded": false,
+        "narrative_mode": "Narrative-Driven"
+      },
+      "output": {
+        "gate_decisions": [
+          {"gate": "G1", "triggered": true, "action": "BLOCK", "reason": "Spread>5倍，流动性黑洞"},
+          {"gate": "G2", "triggered": false, "action": "PASS"},
+          {"gate": "G3", "triggered": false, "action": "PASS"},
+          {"gate": "G4", "triggered": false, "action": "PASS"},
+          {"gate": "G5", "triggered": false, "action": "SKIP"}
+        ],
+        "final_action": "BLOCK",
+        "position_multiplier": 0,
+        "direction": "no_change",
+        "first_triggered_gate": "G1",
+        "human_confirm_required": true,
+        "reasoning": "G1流动性黑洞触发，一票否决，禁止执行"
+      }
+    },
+    {
+      "description": "疲劳度>85 - G3触发",
+      "input": {
+        "event_state": "Continuation",
+        "fatigue_index": 90,
+        "liquidity_state": "GREEN",
+        "correlation": 0.4,
+        "score": 82,
+        "severity": "E3",
+        "A1": 70,
+        "policy_intervention": "NONE",
+        "is_crowded": false,
+        "narrative_mode": "Fact-Driven"
+      },
+      "output": {
+        "gate_decisions": [
+          {"gate": "G1", "triggered": false, "action": "PASS"},
+          {"gate": "G2", "triggered": false, "action": "PASS"},
+          {"gate": "G3", "triggered": true, "action": "BLOCK_NEW", "reason": "Fatigue>85"},
+          {"gate": "G4", "triggered": false, "action": "PASS"},
+          {"gate": "G5", "triggered": false, "action": "SKIP"}
+        ],
+        "final_action": "WATCH",
+        "position_multiplier": 0,
+        "direction": "no_change",
+        "first_triggered_gate": "G3",
+        "human_confirm_required": false,
+        "reasoning": "疲劳度90>85阈值，G3触发，禁止新开仓，观察为主"
+      }
+    }
+  ],
+  
+  "config_params": {
+    "timeout": 60,
+    "gates": {
+      "G1": {
+        "trigger": "spread_multiplier > 5 OR liquidity_state = RED",
+        "action": "BLOCK",
+        "priority": 1
+      },
+      "G2": {
+        "trigger": "event_state IN [Dead, Archived]",
+        "action": "FORCE_CLOSE",
+        "priority": 2
+      },
+      "G3": {
+        "trigger": "fatigue_index > 85",
+        "action": "BLOCK_NEW",
+        "priority": 3
+      },
+      "G4": {
+        "trigger": "correlation > 0.8",
+        "action": "A15_ADJUST",
+        "priority": 4
+      },
+      "G5": {
+        "trigger": "score区间",
+        "action": "POSITION_TIER",
+        "priority": 5
+      }
+    }
+  }
+}

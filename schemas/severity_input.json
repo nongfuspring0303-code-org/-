@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Severity Input Schema",
+  "description": "Severity estimator input payload.",
+  "type": "object",
+  "required": ["headline", "vix", "vix_change_pct", "spx_move_pct", "sector_move_pct"],
+  "properties": {
+    "headline": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vix": {
+      "type": "number"
+    },
+    "vix_change_pct": {
+      "type": "number"
+    },
+    "spx_move_pct": {
+      "type": "number"
+    },
+    "sector_move_pct": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": true
+}

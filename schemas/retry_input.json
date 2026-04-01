@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Retry Input Schema",
+  "description": "Retry policy input payload.",
+  "type": "object",
+  "required": ["attempt", "max_attempts"],
+  "properties": {
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "backoff_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_error": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

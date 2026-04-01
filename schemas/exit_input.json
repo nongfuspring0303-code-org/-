@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExitManager Input",
+  "description": "Input contract for stop/take-profit planning.",
+  "type": "object",
+  "required": ["entry_price", "risk_per_share", "direction"],
+  "properties": {
+    "entry_price": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "risk_per_share": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["long", "short"]
+    },
+    "hold_days": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "profit_r": {
+      "type": "number"
+    },
+    "profit_retrace": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

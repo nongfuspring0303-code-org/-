@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Retry Output Schema",
+  "description": "Retry policy decision output payload.",
+  "type": "object",
+  "required": ["should_retry", "next_attempt"],
+  "properties": {
+    "should_retry": {
+      "type": "boolean"
+    },
+    "next_attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "wait_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

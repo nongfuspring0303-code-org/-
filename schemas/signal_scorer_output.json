@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SignalScorer Output",
+  "description": "SignalScorer 输出契约：最终分数、执行等级、方向和调整项。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "score_raw",
+    "score",
+    "score_tier",
+    "position_pct",
+    "direction",
+    "adjustments_applied",
+    "watch_mode"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "score_raw": {
+      "type": "number"
+    },
+    "score": {
+      "type": "number",
+      "minimum": -100,
+      "maximum": 100
+    },
+    "score_tier": {
+      "type": "string",
+      "enum": ["G1", "G2", "G3", "G4", "G5"]
+    },
+    "position_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["long", "short", "neutral", "flip_long", "flip_short"]
+    },
+    "adjustments_applied": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "E4_weight_adjustment",
+          "fatigue_discount",
+          "correlation_breakdown_A1.5_discount",
+          "crowded_trade_discount",
+          "narrative_mode_position_cut",
+          "policy_intervention_direction_flip",
+          "watch_mode_block"
+        ]
+      }
+    },
+    "weight_details": {
+      "type": "object",
+      "properties": {
+        "w_A0": { "type": "number" },
+        "w_A-1": { "type": "number" },
+        "w_A1": { "type": "number" },
+        "w_A1.5": { "type": "number" },
+        "w_A0.5": { "type": "number" },
+        "effective_A-1": { "type": "number" },
+        "effective_A1.5": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "watch_mode": {
+      "type": "boolean"
+    },
+    "reasoning": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-C-20260330-001.V1.0",
+      "score_raw": 53,
+      "score": 53,
+      "score_tier": "G3",
+      "position_pct": 0.2,
+      "direction": "long",
+      "adjustments_applied": [],
+      "weight_details": {
+        "w_A0": 0.25,
+        "w_A-1": 0.2,
+        "w_A1": 0.25,
+        "w_A1.5": 0.2,
+        "w_A0.5": 0.1,
+        "effective_A-1": 70,
+        "effective_A1.5": 60
+      },
+      "watch_mode": false,
+      "reasoning": "基础评分通过，未触发额外折减或阻断"
+    }
+  ]
+}

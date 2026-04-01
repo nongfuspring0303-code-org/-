@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RiskGatekeeper Output",
+  "description": "Output contract for G1-G6 gate decisions.",
+  "type": "object",
+  "required": [
+    "gate_decisions",
+    "final_action",
+    "position_multiplier",
+    "direction",
+    "human_confirm_required"
+  ],
+  "properties": {
+    "gate_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate", "triggered", "action"],
+        "properties": {
+          "gate": { "type": "string" },
+          "triggered": { "type": "boolean" },
+          "action": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "final_action": {
+      "type": "string",
+      "enum": ["EXECUTE", "BLOCK", "WATCH", "FORCE_CLOSE"]
+    },
+    "position_multiplier": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["no_change", "flip", "long", "short", "neutral"]
+    },
+    "first_triggered_gate": {
+      "type": ["string", "null"]
+    },
+    "human_confirm_required": {
+      "type": "boolean"
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

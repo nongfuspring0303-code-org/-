@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LiquidityChecker Input",
+  "description": "Input contract for liquidity state detection.",
+  "type": "object",
+  "required": ["vix", "ted", "correlation", "spread_pct"],
+  "properties": {
+    "vix": {
+      "type": "number",
+      "minimum": 0,
+      "description": "VIX level."
+    },
+    "ted": {
+      "type": "number",
+      "minimum": 0,
+      "description": "TED spread in bps."
+    },
+    "correlation": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1,
+      "description": "Cross-asset correlation."
+    },
+    "spread_pct": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Orderbook spread as percentage (e.g., 0.005 = 0.5%)."
+    }
+  },
+  "additionalProperties": false
+}

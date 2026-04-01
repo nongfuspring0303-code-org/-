@@ -1,0 +1,133 @@
+module: fatigue_calculator
+description: 疲劳度计算模块测试用例
+cases:
+  - id: FC-001
+    name: third_category_event_light_fatigue
+    type: normal
+    description: 同类别第3次活跃事件，疲劳度应为20
+    input:
+      event_id: "ME-C-20260330-003.V1.0"
+      category: "C"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "trade_war"
+        - "inflation_shock"
+      category_active_count: 3
+      tag_active_counts:
+        trade_war: 2
+        inflation_shock: 3
+      days_since_last_dead: 5
+    expected:
+      fatigue_category: 20
+      fatigue_tag: 20
+      fatigue_final: 20
+      watch_mode: false
+      a_minus_1_discount_factor: 1.0
+      take_profit_penalty: 0.0
+      reset_eligible: false
+
+  - id: FC-002
+    name: missing_category_context_should_fail
+    type: abnormal
+    description: 缺少类别活跃计数时应报错
+    input:
+      event_id: "ME-E-20260331-002.V1.0"
+      category: "E"
+      lifecycle_state: "Continuation"
+      narrative_tags:
+        - "policy_pivot"
+    expected_error:
+      code: "MISSING_HISTORY_CONTEXT"
+
+  - id: FC-003
+    name: tag_fatigue_overrides_category
+    type: boundary
+    description: 类别疲劳较低但标签疲劳高，最终取标签疲劳
+    input:
+      event_id: "ME-E-20260331-004.V1.0"
+      category: "E"
+      lifecycle_state: "Continuation"
+      narrative_tags:
+        - "policy_pivot"
+      category_active_count: 4
+      tag_active_counts:
+        policy_pivot: 7
+      days_since_last_dead: 4
+    expected:
+      fatigue_category: 40
+      fatigue_tag: 100
+      fatigue_final: 100
+      watch_mode: true
+      a_minus_1_discount_factor: 0.5
+      take_profit_penalty: 0.5
+      reset_eligible: false
+
+  - id: FC-004
+    name: dead_over_30_days_resets_fatigue
+    type: boundary
+    description: Dead超过30天可重置疲劳
+    input:
+      event_id: "ME-A-20260331-001.V1.0"
+      category: "A"
+      lifecycle_state: "Dead"
+      narrative_tags:
+        - "liquidity_crisis"
+      category_active_count: 0
+      tag_active_counts:
+        liquidity_crisis: 0
+      days_since_last_dead: 35
+    expected:
+      fatigue_category: 0
+      fatigue_tag: 0
+      fatigue_final: 0
+      watch_mode: false
+      a_minus_1_discount_factor: 1.0
+      take_profit_penalty: 0.0
+      reset_eligible: true
+
+  - id: FC-005
+    name: low_count_no_tag_keeps_zero_fatigue
+    type: normal
+    description: 低计数且无标签时疲劳应为0
+    input:
+      event_id: "ME-G-20260331-002.V1.0"
+      category: "G"
+      lifecycle_state: "Active"
+      category_active_count: 2
+      tag_active_counts: {}
+      days_since_last_dead: 2
+    expected:
+      fatigue_category: 0
+      fatigue_tag: 0
+      fatigue_final: 0
+      watch_mode: false
+
+  - id: FC-006
+    name: category_count_five_medium_fatigue
+    type: boundary
+    description: 第5次同类事件应产生60疲劳
+    input:
+      event_id: "ME-D-20260331-007.V1.0"
+      category: "D"
+      lifecycle_state: "Continuation"
+      category_active_count: 5
+      tag_active_counts:
+        energy_shock: 1
+      days_since_last_dead: 7
+    expected:
+      fatigue_category: 60
+      fatigue_tag: 0
+      fatigue_final: 60
+      watch_mode: false
+      a_minus_1_discount_factor: 1.0
+
+  - id: FC-007
+    name: missing_required_field_should_fail
+    type: abnormal
+    description: 缺少 category 时应触发输入校验失败
+    input:
+      event_id: "ME-D-20260331-016.V1.0"
+      lifecycle_state: "Active"
+      category_active_count: 2
+    expected_error:
+      code: "INVALID_INPUT"

@@ -1,0 +1,16 @@
+{
+  "trace_id": "TRC-20260402-0001",
+  "event_id": "ME-C-20260402-001.V1.0",
+  "evidence_score": 82,
+  "consistency_score": 76,
+  "freshness_score": 88,
+  "confidence": 81,
+  "narrative_state": "initial",
+  "reasoning": [
+    "multiple high-rank sources agree",
+    "headline corroborated by official timeline"
+  ],
+  "schema_version": "ai_intel_v1",
+  "producer": "member-a",
+  "generated_at": "2026-04-02T09:30:00Z"
+}

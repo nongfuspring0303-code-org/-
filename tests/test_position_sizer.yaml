@@ -1,0 +1,13 @@
+module: position_sizer
+description: PositionSizer 最小用例
+cases:
+  - id: PS-YAML-001
+    name: g2_position
+    type: normal
+    input:
+      score: 72
+      liquidity_state: "GREEN"
+      risk_gate_multiplier: 1.0
+      account_equity: 100000
+    expected:
+      score_tier: "G2"

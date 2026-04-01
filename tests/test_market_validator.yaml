@@ -1,0 +1,149 @@
+module: market_validator
+description: 市场验证模块测试用例
+cases:
+  - id: MV-001
+    name: fully_validated_market_reaction
+    type: normal
+    description: 价格、量能、联动、持续性、分化均通过，A1应较高
+    input:
+      event_id: "ME-C-20260330-001.V1.0"
+      conduction_output:
+        conduction_path:
+          - "关税升级"
+          - "通胀压力上升"
+          - "增长预期下降"
+        asset_impacts:
+          - asset_class: "fx"
+            target: "DXY"
+            direction: "long"
+        sector_impacts:
+          - sector: "industrials_export"
+            direction: "hurt"
+      price_changes:
+        DXY: 1.2
+        XLI: -1.8
+      volume_changes:
+        XLI: 2.3
+      cross_asset_linkage:
+        confirmed: true
+      persistence_minutes: 90
+      winner_loser_dispersion:
+        confirmed: true
+      market_timestamp: "2026-03-30T15:00:00Z"
+    expected:
+      A1_min: 80
+      validation_state: "validated"
+      failed_checks_count: 0
+      needs_manual_review: false
+
+  - id: MV-002
+    name: missing_market_data_should_fail
+    type: abnormal
+    description: 缺少市场数据时应报错
+    input:
+      event_id: "ME-E-20260331-004.V1.0"
+      conduction_output: {}
+      market_timestamp: "2026-03-31T14:00:00Z"
+    expected_error:
+      code: "MISSING_MARKET_DATA"
+
+  - id: MV-003
+    name: price_only_but_no_volume_or_persistence
+    type: boundary
+    description: 只有价格反应但缺少量能和持续性，不应判为强验证
+    input:
+      event_id: "ME-D-20260331-003.V1.0"
+      conduction_output:
+        conduction_path:
+          - "地缘冲突升级"
+          - "油价上行"
+      price_changes:
+        XLE: 1.5
+      volume_changes:
+        XLE: 0.8
+      cross_asset_linkage:
+        confirmed: false
+      persistence_minutes: 12
+      winner_loser_dispersion:
+        confirmed: false
+      market_timestamp: "2026-03-31T14:20:00Z"
+    expected:
+      A1_max: 59
+      validation_state: "not_validated"
+      failed_checks_contains:
+        - "volume_confirmation"
+        - "cross_asset_linkage"
+        - "persistence"
+
+  - id: MV-004
+    name: partially_validated_case
+    type: boundary
+    description: 部分通过时应落入 partially_validated
+    input:
+      event_id: "ME-F-20260331-005.V1.0"
+      conduction_output:
+        conduction_path:
+          - "通胀数据超预期"
+      price_changes:
+        TNX: 0.9
+      volume_changes:
+        TLT: 1.4
+      cross_asset_linkage:
+        confirmed: true
+      persistence_minutes: 35
+      winner_loser_dispersion:
+        confirmed: false
+      market_timestamp: "2026-03-31T15:00:00Z"
+    expected:
+      A1_min: 60
+      A1_max: 80
+      validation_state: "partially_validated"
+
+  - id: MV-005
+    name: missing_conduction_context_should_fail
+    type: abnormal
+    description: 缺少传导输出时应报错
+    input:
+      event_id: "ME-C-20260331-010.V1.0"
+      conduction_output: {}
+      price_changes:
+        XLI: -1.2
+      volume_changes:
+        XLI: 1.8
+      market_timestamp: "2026-03-31T15:30:00Z"
+    expected_error:
+      code: "MISSING_CONDUCTION_CONTEXT"
+
+  - id: MV-006
+    name: counter_validated_case
+    type: boundary
+    description: 低分且无明确联动时应落入 counter_validated
+    input:
+      event_id: "ME-F-20260331-011.V1.0"
+      conduction_output:
+        conduction_path:
+          - "宏观数据偏弱"
+      price_changes:
+        SPY: 0.1
+      volume_changes:
+        SPY: 1.0
+      cross_asset_linkage: {}
+      persistence_minutes: 5
+      winner_loser_dispersion:
+        confirmed: false
+      market_timestamp: "2026-03-31T15:45:00Z"
+    expected:
+      A1_max: 20
+      validation_state: "counter_validated"
+
+  - id: MV-007
+    name: missing_required_field_should_fail
+    type: abnormal
+    description: 缺少 market_timestamp 时应触发输入校验失败
+    input:
+      event_id: "ME-C-20260331-018.V1.0"
+      conduction_output:
+        conduction_path:
+          - "关税升级"
+    expected_error:
+      code: "INVALID_INPUT"

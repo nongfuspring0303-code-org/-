@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Event Intel Input Schema",
+  "description": "Input payload for AI event intelligence scoring.",
+  "type": "object",
+  "required": [
+    "trace_id",
+    "event_id",
+    "headline",
+    "source_url",
+    "timestamp",
+    "raw_text",
+    "schema_version",
+    "producer",
+    "generated_at"
+  ],
+  "properties": {
+    "trace_id": {"type": "string", "minLength": 8},
+    "event_id": {"type": "string"},
+    "headline": {"type": "string", "minLength": 1},
+    "source_url": {"type": "string", "format": "uri"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "raw_text": {"type": "string"},
+    "source_type": {"type": "string"},
+    "market_snapshot": {"type": "object"},
+    "schema_version": {"type": "string"},
+    "producer": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

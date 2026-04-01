@@ -1,0 +1,106 @@
+{
+  "module": "SourceRanker",
+  "version": "1.0.0",
+  "description": "事件来源分级 - A/B/C级来源判定",
+  
+  "input": {
+    "type": "object",
+    "required": ["source_url"],
+    "properties": {
+      "source_url": {
+        "type": "string",
+        "description": "信息来源URL"
+      },
+      "headline": {
+        "type": "string",
+        "description": "事件标题"
+      },
+      "raw_text": {
+        "type": "string",
+        "description": "原始文本"
+      }
+    }
+  },
+  
+  "output": {
+    "type": "object",
+    "properties": {
+      "rank": {
+        "type": "string",
+        "enum": ["A", "B", "B-", "C"],
+        "description": "来源等级"
+      },
+      "rank_detail": {
+        "type": "string",
+        "description": "分级详细说明"
+      },
+      "is_fast_track_eligible": {
+        "type": "boolean",
+        "description": "是否满足快速通道条件"
+      },
+      "fast_track_expires_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "快速通道过期时间"
+      },
+      "needs_escalation": {
+        "type": "boolean",
+        "description": "是否需要升源"
+      },
+      "reasoning": {
+        "type": "string",
+        "description": "判定依据"
+      }
+    }
+  },
+  
+  "error": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "enum": ["INVALID_URL", "SOURCE_UNKNOWN", "TIMEOUT"]
+      },
+      "message": {"type": "string"}
+    }
+  },
+  
+  "examples": [
+    {
+      "input": {"source_url": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm"},
+      "output": {
+        "rank": "A",
+        "rank_detail": "官方来源 - Federal Reserve",
+        "is_fast_track_eligible": false,
+        "needs_escalation": false,
+        "reasoning": "Federal Reserve是A级来源白名单"
+      }
+    },
+    {
+      "input": {"source_url": "https://www.reuters.com/markets/us/..."},
+      "output": {
+        "rank": "B",
+        "rank_detail": "通讯社来源 - Reuters",
+        "is_fast_track_eligible": true,
+        "fast_track_expires_at": "2026-03-30T11:00:00Z",
+        "needs_escalation": true,
+        "reasoning": "Reuters是B级来源，需在90分钟内升到A级"
+      }
+    },
+    {
+      "input": {"source_url": "https://twitter.com/elonmusk/status/..."},
+      "output": {
+        "rank": "C",
+        "rank_detail": "社交媒体来源",
+        "is_fast_track_eligible": false,
+        "needs_escalation": true,
+        "reasoning": "Twitter是C级来源，只能做线索，禁止直接进交易主链"
+      }
+    }
+  ],
+  
+  "config_params": {
+    "timeout": 30,
+    "fast_track_timeout": 5400
+  }
+}

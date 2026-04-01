@@ -1,0 +1,19 @@
+module: event_objectifier
+description: EventObjectifier 最小用例
+cases:
+  - id: EO-YAML-001
+    name: object_build
+    type: normal
+    input:
+      headline: "US tariff package"
+      source_url: "https://www.reuters.com/world/us/example"
+      timestamp: "2026-04-01T10:45:00Z"
+      category: "C"
+      source_rank: "B"
+      severity: "E3"
+      sequence: 1
+      confidence: 75
+    expected:
+      category: "C"
+      source_rank: "B"
+      severity: "E3"

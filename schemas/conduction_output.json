@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConductionMapper Output",
+  "description": "ConductionMapper 输出契约：宏观到资产、板块、个股的结构化传导路径。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "macro_factors",
+    "asset_impacts",
+    "sector_impacts",
+    "stock_candidates",
+    "time_horizons",
+    "conduction_path",
+    "confidence",
+    "needs_manual_review"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "macro_factors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["factor", "direction", "strength"],
+        "properties": {
+          "factor": {
+            "type": "string",
+            "enum": ["risk_appetite", "rates", "inflation", "growth", "usd", "volatility", "liquidity"]
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["up", "down", "mixed"]
+          },
+          "strength": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "asset_impacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset_class", "target", "direction"],
+        "properties": {
+          "asset_class": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["long", "short", "neutral"]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sector_impacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sector", "direction", "driver_type"],
+        "properties": {
+          "sector": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["benefit", "hurt", "mixed"]
+          },
+          "driver_type": {
+            "type": "string",
+            "enum": ["beta", "alpha", "beta_alpha"]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stock_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "direction"],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["long", "short", "neutral"]
+          },
+          "event_beta": {
+            "type": "number"
+          },
+          "liquidity_tier": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "time_horizons": {
+      "type": "object",
+      "required": ["intraday", "overnight", "multiweek"],
+      "properties": {
+        "intraday": { "type": "string" },
+        "overnight": { "type": "string" },
+        "multiweek": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "conduction_path": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "needs_manual_review": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-C-20260330-001.V1.0",
+      "macro_factors": [
+        {
+          "factor": "inflation",
+          "direction": "up",
+          "strength": "high",
+          "reason": "进口成本上升"
+        },
+        {
+          "factor": "growth",
+          "direction": "down",
+          "strength": "medium",
+          "reason": "贸易摩擦压制出口和投资"
+        }
+      ],
+      "asset_impacts": [
+        {
+          "asset_class": "fx",
+          "target": "DXY",
+          "direction": "long",
+          "confidence": 72
+        }
+      ],
+      "sector_impacts": [
+        {
+          "sector": "industrials_export",
+          "direction": "hurt",
+          "driver_type": "beta_alpha",
+          "reason": "出口链承压"
+        }
+      ],
+      "stock_candidates": [
+        {
+          "symbol": "CAT",
+          "sector": "industrials_export",
+          "direction": "short",
+          "event_beta": 1.2,
+          "liquidity_tier": "high",
+          "reason": "出口敏感且宏观传导一致"
+        }
+      ],
+      "time_horizons": {
+        "intraday": "headline冲击主导",
+        "overnight": "等待政策细节确认",
+        "multiweek": "若落地则转向基本面传导"
+      },
+      "conduction_path": [
+        "关税升级",
+        "通胀压力上升",
+        "增长预期下降",
+        "出口链承压",
+        "进口替代链受益"
+      ],
+      "confidence": 78,
+      "needs_manual_review": false
+    }
+  ]
+}

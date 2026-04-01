@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConductionMapper Input",
+  "description": "ConductionMapper 输入契约：基于事件对象和宏观背景做传导映射。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "category",
+    "severity",
+    "lifecycle_state"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "E", "F", "G"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["E0", "E1", "E2", "E3", "E4"]
+    },
+    "headline": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["Detected", "Verified", "Active", "Continuation", "Exhaustion", "Dead", "Archived"]
+    },
+    "narrative_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy_intervention": {
+      "type": "string",
+      "enum": ["NONE", "WEAK", "MEDIUM", "STRONG"]
+    },
+    "macro_context": {
+      "type": "object",
+      "properties": {
+        "vix_level": { "type": "number" },
+        "dxy_change_pct": { "type": "number" },
+        "us10y_change_bps": { "type": "number" },
+        "oil_change_pct": { "type": "number" },
+        "gold_change_pct": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-C-20260330-001.V1.0",
+      "category": "C",
+      "severity": "E3",
+      "headline": "美国宣布新一轮关税措施",
+      "lifecycle_state": "Active",
+      "narrative_tags": ["trade_war", "inflation_shock"],
+      "policy_intervention": "NONE"
+    }
+  ]
+}

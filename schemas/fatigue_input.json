@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FatigueCalculator Input",
+  "description": "FatigueCalculator 输入契约：计算类别疲劳、标签疲劳及最终疲劳。",
+  "type": "object",
+  "required": [
+    "event_id",
+    "category",
+    "lifecycle_state",
+    "category_active_count"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "E", "F", "G"]
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["Detected", "Verified", "Active", "Continuation", "Exhaustion", "Dead", "Archived"]
+    },
+    "narrative_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "category_active_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tag_active_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "days_since_last_dead": {
+      "type": "number",
+      "minimum": 0
+    },
+    "previous_fatigue_final": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "event_id": "ME-E-20260331-002.V1.0",
+      "category": "E",
+      "lifecycle_state": "Continuation",
+      "narrative_tags": ["policy_pivot"],
+      "category_active_count": 6,
+      "tag_active_counts": {
+        "policy_pivot": 7
+      },
+      "days_since_last_dead": 3
+    }
+  ]
+}

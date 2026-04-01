@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Audit Record Schema",
+  "description": "Audit record schema for AI-assisted chain with full traceability.",
+  "type": "object",
+  "required": [
+    "trace_id",
+    "event_id",
+    "stage",
+    "module",
+    "decision",
+    "inputs_hash",
+    "outputs_hash",
+    "schema_version",
+    "producer",
+    "generated_at"
+  ],
+  "properties": {
+    "trace_id": {"type": "string", "minLength": 8},
+    "event_id": {"type": "string"},
+    "stage": {"type": "string", "enum": ["A", "B", "C", "X"]},
+    "module": {"type": "string"},
+    "decision": {"type": "string"},
+    "inputs_hash": {"type": "string"},
+    "outputs_hash": {"type": "string"},
+    "latency_ms": {"type": "number", "minimum": 0},
+    "schema_version": {"type": "string"},
+    "producer": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

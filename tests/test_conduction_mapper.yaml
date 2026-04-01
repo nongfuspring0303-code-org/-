@@ -1,0 +1,143 @@
+module: conduction_mapper
+description: 传导映射模块测试用例
+cases:
+  - id: CM-001
+    name: tariff_event_maps_to_macro_sector_stock
+    type: normal
+    description: 关税事件应输出宏观-板块-个股完整路径
+    input:
+      event_id: "ME-C-20260330-001.V1.0"
+      category: "C"
+      severity: "E3"
+      headline: "美国宣布新一轮关税措施"
+      summary: "进口成本上升，出口链承压"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "trade_war"
+        - "inflation_shock"
+      policy_intervention: "NONE"
+    expected:
+      conduction_path_contains:
+        - "关税升级"
+        - "通胀压力上升"
+        - "增长预期下降"
+      macro_factors_contains:
+        - factor: "inflation"
+          direction: "up"
+        - factor: "growth"
+          direction: "down"
+      sector_impacts_contains:
+        - sector: "industrials_export"
+          direction: "hurt"
+      stock_candidates_contains:
+        - symbol: "CAT"
+          direction: "short"
+      needs_manual_review: false
+
+  - id: CM-002
+    name: insufficient_context_should_fail
+    type: abnormal
+    description: 输入缺少关键事件语境时应报错
+    input:
+      event_id: "ME-D-20260331-002.V1.0"
+      category: "D"
+      severity: "E2"
+      lifecycle_state: "Detected"
+    expected_error:
+      code: "INSUFFICIENT_EVENT_CONTEXT"
+
+  - id: CM-003
+    name: policy_intervention_can_partially_reverse_path
+    type: boundary
+    description: 强政策干预下，原始传导路径可出现部分反转
+    input:
+      event_id: "ME-E-20260331-005.V1.0"
+      category: "E"
+      severity: "E4"
+      headline: "危机升级后市场预期强刺激政策出台"
+      summary: "坏消息推动救市预期升温"
+      lifecycle_state: "Continuation"
+      narrative_tags:
+        - "policy_pivot"
+      policy_intervention: "STRONG"
+      macro_context:
+        vix_level: 34
+        us10y_change_bps: -18
+    expected:
+      macro_factors_contains:
+        - factor: "liquidity"
+          direction: "up"
+      conduction_path_contains:
+        - "政策干预预期"
+      needs_manual_review: false
+
+  - id: CM-004
+    name: no_direct_stock_mapping_without_path
+    type: boundary
+    description: 禁止无宏观与板块路径时直接给个股
+    input:
+      event_id: "ME-F-20260331-003.V1.0"
+      category: "F"
+      severity: "E1"
+      headline: "单条宏观数据异动"
+      summary: ""
+      lifecycle_state: "Detected"
+      narrative_tags: []
+      policy_intervention: "NONE"
+    expected:
+      stock_candidates_max_count: 0
+      needs_manual_review: true
+
+  - id: CM-005
+    name: weak_policy_intervention_still_maps
+    type: normal
+    description: E类事件在弱政策干预下仍应输出政策路径
+    input:
+      event_id: "ME-E-20260331-008.V1.0"
+      category: "E"
+      severity: "E3"
+      headline: "市场预期存在温和政策对冲"
+      summary: "政策预期但力度有限"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "policy_pivot"
+      policy_intervention: "WEAK"
+    expected:
+      conduction_path_contains:
+        - "政策干预预期"
+      macro_factors_contains:
+        - factor: "liquidity"
+          direction: "up"
+      needs_manual_review: false
+
+  - id: CM-006
+    name: unsupported_category_goes_manual_review
+    type: boundary
+    description: 非C/E类别当前映射不足时进入人工复核
+    input:
+      event_id: "ME-A-20260331-009.V1.0"
+      category: "A"
+      severity: "E3"
+      headline: "银行流动性危机升级"
+      summary: "需要人工补充完整传导"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "liquidity_crisis"
+      policy_intervention: "NONE"
+    expected:
+      stock_candidates_max_count: 0
+      needs_manual_review: true
+      conduction_path_contains:
+        - "事件信息不足，需人工补充传导路径"
+
+  - id: CM-007
+    name: missing_required_field_should_fail
+    type: abnormal
+    description: 缺少 lifecycle_state 时应触发输入校验失败
+    input:
+      event_id: "ME-A-20260331-017.V1.0"
+      category: "A"
+      severity: "E3"
+      headline: "银行流动性危机升级"
+    expected_error:
+      code: "INVALID_INPUT"

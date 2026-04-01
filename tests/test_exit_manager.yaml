@@ -1,0 +1,12 @@
+module: exit_manager
+description: ExitManager 最小用例
+cases:
+  - id: EX-YAML-001
+    name: long_exit_levels
+    type: normal
+    input:
+      entry_price: 100.0
+      risk_per_share: 2.0
+      direction: "long"
+    expected:
+      hard_stop: 96.0

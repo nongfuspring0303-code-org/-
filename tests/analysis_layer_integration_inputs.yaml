@@ -1,0 +1,183 @@
+suite: analysis_layer_integration
+description: 成员C用于执行 T3.6 的分析层集成测试输入包
+version: "1.0"
+owner: "成员B"
+last_updated: "2026-03-31"
+
+runtime:
+  command: "python tests/run_analysis_layer_tests.py"
+  expected_result: "22/22 checks passed"
+
+chains:
+  - id: AL-CHAIN-001
+    name: tariff_event_happy_path
+    description: 关税类事件从生命周期到评分的最小成功链路
+    lifecycle_input:
+      event_id: "ME-C-20260330-001.V1.0"
+      category: "C"
+      severity: "E3"
+      source_rank: "A"
+      headline: "美国宣布新一轮关税措施"
+      detected_at: "2026-03-30T13:30:00Z"
+      is_official_confirmed: true
+      market_validated: true
+      has_material_update: true
+      elapsed_hours: 4
+    expected_lifecycle:
+      lifecycle_state: "Active"
+      catalyst_state: "first_impulse"
+      trade_eligibility: "tradable"
+    fatigue_input:
+      event_id: "ME-C-20260330-001.V1.0"
+      category: "C"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "trade_war"
+        - "inflation_shock"
+      category_active_count: 3
+      tag_active_counts:
+        trade_war: 2
+        inflation_shock: 3
+      days_since_last_dead: 5
+    expected_fatigue:
+      fatigue_final: 20
+      watch_mode: false
+    conduction_input:
+      event_id: "ME-C-20260330-001.V1.0"
+      category: "C"
+      severity: "E3"
+      headline: "美国宣布新一轮关税措施"
+      summary: "进口成本上升，出口链承压"
+      lifecycle_state: "Active"
+      narrative_tags:
+        - "trade_war"
+        - "inflation_shock"
+      policy_intervention: "NONE"
+    expected_conduction:
+      conduction_path_contains:
+        - "关税升级"
+        - "通胀压力上升"
+        - "增长预期下降"
+      stock_candidates_contains:
+        - symbol: "CAT"
+          direction: "short"
+    validation_input:
+      event_id: "ME-C-20260330-001.V1.0"
+      conduction_output_ref: "AL-CHAIN-001.conduction_output"
+      price_changes:
+        DXY: 1.2
+        XLI: -1.8
+      volume_changes:
+        XLI: 2.3
+      cross_asset_linkage:
+        confirmed: true
+      persistence_minutes: 90
+      winner_loser_dispersion:
+        confirmed: true
+      market_timestamp: "2026-03-30T15:00:00Z"
+    expected_validation:
+      A1_min: 80
+      validation_state: "validated"
+    signal_input:
+      event_id: "ME-C-20260330-001.V1.0"
+      severity: "E3"
+      A0: 30
+      A-1: 70
+      A1_ref: "AL-CHAIN-001.validation_output.A1"
+      A1.5: 60
+      A0.5: 0
+      fatigue_final_ref: "AL-CHAIN-001.fatigue_output.fatigue_final"
+      a_minus_1_discount_factor_ref: "AL-CHAIN-001.fatigue_output.a_minus_1_discount_factor"
+      correlation: 0.4
+      is_crowded: false
+      narrative_mode: "Fact-Driven"
+      policy_intervention: "NONE"
+      base_direction: "long"
+      watch_mode_ref: "AL-CHAIN-001.fatigue_output.watch_mode"
+      weights_version: "score_v1"
+    expected_signal:
+      score_min: 40
+      direction: "long"
+
+  - id: AL-CHAIN-002
+    name: high_fatigue_watch_mode
+    description: 高疲劳事件必须在评分层被阻断
+    lifecycle_input:
+      event_id: "ME-E-20260331-004.V1.0"
+      category: "E"
+      severity: "E3"
+      source_rank: "A"
+      headline: "政策转向预期再次升温"
+      detected_at: "2026-03-31T09:30:00Z"
+      is_official_confirmed: true
+      market_validated: true
+      has_material_update: true
+      elapsed_hours: 8
+    expected_lifecycle:
+      lifecycle_state: "Active"
+    fatigue_input:
+      event_id: "ME-E-20260331-004.V1.0"
+      category: "E"
+      lifecycle_state: "Continuation"
+      narrative_tags:
+        - "policy_pivot"
+      category_active_count: 4
+      tag_active_counts:
+        policy_pivot: 7
+      days_since_last_dead: 4
+    expected_fatigue:
+      fatigue_final: 100
+      watch_mode: true
+    signal_input:
+      event_id: "ME-E-20260331-004.V1.0"
+      severity: "E3"
+      A0: 30
+      A-1: 80
+      A1: 68
+      A1.5: 55
+      A0.5: 10
+      fatigue_final_ref: "AL-CHAIN-002.fatigue_output.fatigue_final"
+      a_minus_1_discount_factor_ref: "AL-CHAIN-002.fatigue_output.a_minus_1_discount_factor"
+      correlation: 0.3
+      is_crowded: false
+      narrative_mode: "Fact-Driven"
+      policy_intervention: "STRONG"
+      base_direction: "short"
+      watch_mode_ref: "AL-CHAIN-002.fatigue_output.watch_mode"
+      weights_version: "score_v1"
+    expected_signal:
+      score_tier: "G5"
+      direction: "neutral"
+      adjustments_applied_contains:
+        - "watch_mode_block"
+
+  - id: AL-CHAIN-003
+    name: e4_correlation_breakdown
+    description: E4 危机事件在相关性崩溃场景下应触发 A1.5 折减
+    signal_input:
+      event_id: "ME-D-20260331-002.V1.0"
+      severity: "E4"
+      A0: 40
+      A-1: 60
+      A1: 75
+      A1.5: 65
+      A0.5: 30
+      fatigue_final: 30
+      a_minus_1_discount_factor: 1.0
+      correlation: 0.85
+      is_crowded: false
+      narrative_mode: "Narrative-Driven"
+      policy_intervention: "NONE"
+      base_direction: "short"
+      watch_mode: false
+      weights_version: "score_v1"
+    expected_signal:
+      adjustments_applied_contains:
+        - "E4_weight_adjustment"
+        - "correlation_breakdown_A1.5_discount"
+      direction: "short"
+
+handoff_notes:
+  - "成员C执行 T3.6 时，优先复用 tests/run_analysis_layer_tests.py 的基线验证。"
+  - "若扩展集成测试，请在本文件新增 chain，不要覆盖 AL-CHAIN-001 至 AL-CHAIN-003。"
+  - "引用 *_ref 字段表示应使用上游模块输出实际值拼接下游输入，而不是手填固定值。"

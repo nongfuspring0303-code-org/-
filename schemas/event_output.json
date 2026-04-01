@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Event Output Schema",
+  "description": "EDT模块通用输出格式 - 事件对象",
+  "type": "object",
+  "required": ["event_id", "category", "severity", "lifecycle_state", "confidence"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^ME-[A-G]-[0-9]{8}-[0-9]{3}\\.V[0-9]+\\.[0-9]+$",
+      "description": "事件唯一标识: ME-[类别]-[日期]-[序号].V[版本]"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "E", "F", "G"],
+      "description": "事件分类 A-G"
+    },
+    "source_rank": {
+      "type": "string",
+      "enum": ["A", "B", "B-", "C"],
+      "description": "来源等级"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["E0", "E1", "E2", "E3", "E4"],
+      "description": "严重度 E0-E4"
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": ["Detected", "Verified", "Active", "Continuation", "Exhaustion", "Dead", "Archived"],
+      "description": "生命周期状态"
+    },
+    "catalyst_state": {
+      "type": "string",
+      "enum": ["first_impulse", "continuation", "exhaustion", "dead"],
+      "description": "交易催化状态"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "AI信心分"
+    },
+    "headline": {
+      "type": "string",
+      "description": "事件标题"
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "原始来源链接"
+    },
+    "detected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "发现时间"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "最后更新时间"
+    },
+    "version": {
+      "type": "string",
+      "description": "版本号"
+    },
+    "fatigue_index": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "疲劳度"
+    },
+    "narrative_mode": {
+      "type": "string",
+      "enum": ["Narrative-Driven", "Fact-Driven", "Unknown"],
+      "description": "叙事/事实驱动模式"
+    },
+    "scores": {
+      "type": "object",
+      "description": "各维度评分",
+      "properties": {
+        "A0": {"type": "number", "minimum": 0, "maximum": 100},
+        "A-1": {"type": "number", "minimum": 0, "maximum": 100},
+        "A1": {"type": "number", "minimum": 0, "maximum": 100},
+        "A1.5": {"type": "number", "minimum": 0, "maximum": 100},
+        "A0.5": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "score": {
+      "type": "number",
+      "minimum": -100,
+      "maximum": 100,
+      "description": "综合评分"
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["long", "short", "neutral", "flip_long", "flip_short"],
+      "description": "交易方向"
+    },
+    "position_tier": {
+      "type": "string",
+      "enum": ["G1", "G2", "G3", "G4", "G5"],
+      "description": "执行等级"
+    },
+    "conduction": {
+      "type": "object",
+      "description": "传导路径",
+      "properties": {
+        "macro": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "sector": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "stock": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "market_validation": {
+      "type": "object",
+      "description": "市场验证结果",
+      "properties": {
+        "validated": {"type": "boolean"},
+        "A1_score": {"type": "number"},
+        "checks": {
+          "type": "object",
+          "properties": {
+            "price_reaction": {"type": "boolean"},
+            "volume": {"type": "boolean"},
+            "correlation": {"type": "boolean"},
+            "persistence": {"type": "boolean"},
+            "divergence": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "liquidity_state": {
+      "type": "string",
+      "enum": ["GREEN", "YELLOW", "RED"],
+      "description": "流动性状态"
+    },
+    "execution_order": {
+      "type": "object",
+      "description": "执行指令",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["OPEN_LONG", "OPEN_SHORT", "CLOSE", "HOLD", "FLIP"]
+        },
+        "symbol": {"type": "string"},
+        "quantity": {"type": "number"},
+        "entry_price": {"type": "number"},
+        "stop_loss": {"type": "number"},
+        "take_profit_levels": {
+          "type": "array",
+          "items": {"type": "number"}
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "audit_log": {
+      "type": "object",
+      "description": "审计日志",
+      "properties": {
+        "gate_triggered": {"type": "string"},
+        "timeout_count": {"type": "number"},
+        "human_confirm": {"type": "boolean"}
+      }
+    }
+  }
+}

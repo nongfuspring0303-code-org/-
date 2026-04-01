@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""
+Full-chain runner: Intel -> Analysis -> Execution.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+from conduction_mapper import ConductionMapper
+from fatigue_calculator import FatigueCalculator
+from intel_modules import IntelPipeline
+from lifecycle_manager import LifecycleManager
+from market_validator import MarketValidator
+from signal_scorer import SignalScorer
+from workflow_runner import WorkflowRunner
+
+
+class FullWorkflowRunner:
+    """End-to-end runner across all implemented layers."""
+
+    def __init__(self):
+        self.intel = IntelPipeline()
+        self.lifecycle = LifecycleManager()
+        self.fatigue = FatigueCalculator()
+        self.conduction = ConductionMapper()
+        self.validation = MarketValidator()
+        self.scorer = SignalScorer()
+        self.execution = WorkflowRunner()
+
+    def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        intel_out = self.intel.run(payload)
+
+        event_object = intel_out["event_object"]
+        source_rank = intel_out["source_rank"]
+
+        lifecycle_out = self.lifecycle.run(
+            {
+                "event_id": event_object["event_id"],
+                "category": event_object["category"],
+                "severity": event_object["severity"],
+                "source_rank": event_object["source_rank"],
+                "headline": event_object["headline"],
+                "detected_at": event_object["detected_at"],
+                "is_official_confirmed": payload.get("is_official_confirmed", source_rank["rank"] in ("A", "B")),
+                "market_validated": payload.get("market_validated", True),
+                "has_material_update": payload.get("has_material_update", True),
+                "elapsed_hours": payload.get("elapsed_hours", 2),
+            }
+        ).data
+
+        fatigue_out = self.fatigue.run(
+            {
+                "event_id": event_object["event_id"],
+                "category": event_object["category"],
+                "lifecycle_state": lifecycle_out["lifecycle_state"],
+                "narrative_tags": payload.get("narrative_tags", ["macro_event"]),
+                "category_active_count": payload.get("category_active_count", 3),
+                "tag_active_counts": payload.get("tag_active_counts", {"macro_event": 2}),
+                "days_since_last_dead": payload.get("days_since_last_dead", 5),
+            }
+        ).data
+
+        conduction_out = self.conduction.run(
+            {
+                "event_id": event_object["event_id"],
+                "category": event_object["category"],
+                "severity": event_object["severity"],
+                "headline": event_object["headline"],
+                "summary": payload.get("summary", event_object["headline"]),
+                "lifecycle_state": lifecycle_out["lifecycle_state"],
+                "narrative_tags": payload.get("narrative_tags", ["macro_event"]),
+                "policy_intervention": payload.get("policy_intervention", "NONE"),
+            }
+        ).data
+
+        validation_out = self.validation.run(
+            {
+                "event_id": event_object["event_id"],
+                "conduction_output": {"conduction_path": conduction_out["conduction_path"]},
+                "price_changes": payload.get("price_changes", {"SPY": -1.2}),
+                "volume_changes": payload.get("volume_changes", {"SPY": 1.8}),
+                "cross_asset_linkage": payload.get("cross_asset_linkage", {"confirmed": True}),
+                "persistence_minutes": payload.get("persistence_minutes", 90),
+                "winner_loser_dispersion": payload.get("winner_loser_dispersion", {"confirmed": True}),
+                "market_timestamp": payload.get("market_timestamp", event_object["updated_at"]),
+            }
+        ).data
+
+        signal_out = self.scorer.run(
+            {
+                "event_id": event_object["event_id"],
+                "severity": event_object["severity"],
+                "A0": payload.get("A0", intel_out["severity"]["A0"]),
+                "A-1": payload.get("A-1", 65),
+                "A1": validation_out["A1"],
+                "A1.5": payload.get("A1.5", 58),
+                "A0.5": payload.get("A0.5", 0),
+                "fatigue_final": fatigue_out["fatigue_final"],
+                "a_minus_1_discount_factor": fatigue_out["a_minus_1_discount_factor"],
+                "correlation": payload.get("validation_correlation", 0.55),
+                "is_crowded": payload.get("is_crowded", False),
+                "narrative_mode": payload.get("narrative_mode", "Fact-Driven"),
+                "policy_intervention": payload.get("policy_intervention", "NONE"),
+                "base_direction": payload.get("direction", "long"),
+                "watch_mode": fatigue_out["watch_mode"],
+                "weights_version": "score_v1",
+            }
+        ).data
+
+        analysis_out = {
+            "lifecycle": lifecycle_out,
+            "fatigue": fatigue_out,
+            "conduction": conduction_out,
+            "market_validation": validation_out,
+            "signal": signal_out,
+        }
+
+        execution_in = {
+            "A0": payload.get("A0", intel_out["severity"]["A0"]),
+            "A-1": payload.get("A-1", 65),
+            "A1": analysis_out["market_validation"]["A1"],
+            "A1.5": payload.get("A1.5", 58),
+            "A0.5": payload.get("A0.5", 0),
+            "severity": intel_out["event_object"]["severity"],
+            "fatigue_index": analysis_out["fatigue"]["fatigue_final"],
+            "event_state": analysis_out["lifecycle"]["lifecycle_state"],
+            "correlation": payload.get("execution_correlation", 0.55),
+            "vix": payload.get("vix", 20),
+            "ted": payload.get("ted", 50),
+            "spread_pct": payload.get("spread_pct", 0.003),
+            "account_equity": payload.get("account_equity", 100000),
+            "entry_price": payload.get("entry_price", 100.0),
+            "risk_per_share": payload.get("risk_per_share", 2.0),
+            "direction": payload.get("direction", "long"),
+            "source_rank": event_object["source_rank"],
+            "needs_escalation": source_rank.get("needs_escalation", False),
+            "policy_intervention": payload.get("policy_intervention", "NONE"),
+            "require_human_confirm": payload.get("require_human_confirm", False),
+            "human_confirmed": payload.get("human_confirmed", False),
+        }
+        execution_out = self.execution.run(execution_in)
+
+        return {"intel": intel_out, "analysis": analysis_out, "execution": execution_out}
+
+
+if __name__ == "__main__":
+    sample = {
+        "headline": "Fed announces emergency liquidity action after tariff shock",
+        "source": "https://www.reuters.com/markets/us/example",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "vix": 28,
+        "vix_change_pct": 25,
+        "spx_move_pct": 2.2,
+        "sector_move_pct": 4.1,
+        "sequence": 1,
+        "account_equity": 150000,
+        "entry_price": 42.5,
+        "risk_per_share": 1.5,
+        "direction": "long",
+    }
+    out = FullWorkflowRunner().run(sample)
+    print(json.dumps(out, indent=2, ensure_ascii=False))

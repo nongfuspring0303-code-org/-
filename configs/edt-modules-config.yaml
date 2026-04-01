@@ -1,0 +1,465 @@
+# EDT Modules Configuration
+# 重大事件驱动交易系统 - 模块配置
+
+modules:
+  # ========== 情报层模块 ==========
+  EventCapture:
+    enabled: true
+    timeout: 60
+    params:
+      keywords:
+        - "Fed"
+        - "tariff"
+        - "war"
+        - "virus"
+        - "sanction"
+        - "crisis"
+        - "emergency"
+      vix_trigger: 20
+      min_source_rank: "C"
+
+  SourceRanker:
+    enabled: true
+    timeout: 30
+    params:
+      ranks:
+        A:
+          - "whitehouse.gov"
+          - "federalreserve.gov"
+          - "sec.gov"
+        B:
+          - "reuters.com"
+          - "bloomberg.com"
+          - "wsj.com"
+          - "ft.com"
+          - "cnbc.com"
+          - "apnews.com"
+        C:
+          - "twitter.com"
+          - "telegram"
+      fast_track_timeout: 5400  # 90分钟
+
+  SeverityEstimator:
+    enabled: true
+    timeout: 300
+    params:
+      vix_e4_absolute: 40
+      vix_e3_absolute: 25
+      vix_change_e4_pct: 50
+      vix_change_e3_pct: 30
+      spx_vol_e4_pct: 3.0
+      spx_vol_e3_pct: 2.5
+      etf_vol_e2_pct: 5.0
+      # VIX期限结构辅助
+      contango_to_normal: -2
+      # E4特殊规则
+      e4_no_wait: true
+
+  EventObjectifier:
+    enabled: true
+    timeout: 120
+    params:
+      id_format: "ME-[category]-[YYYYMMDD]-[seq].V[version]"
+      category_codes:
+        - "A"  # 金融危机
+        - "B"  # 疫情
+        - "C"  # 关税
+        - "D"  # 地缘
+        - "E"  # 政策
+        - "F"  # 宏观数据
+        - "G"  # 市场制度
+
+  # ========== 分析层模块 ==========
+  LifecycleManager:
+    enabled: true
+    timeout: 60
+    params:
+      states:
+        - Detected
+        - Verified
+        - Active
+        - Continuation
+        - Exhaustion
+        - Dead
+        - Archived
+      catalyst_states:
+        - first_impulse
+        - continuation
+        - exhaustion
+        - dead
+      # 状态转换规则
+      transitions:
+        Detected:
+          - Verified
+        Verified:
+          - Active
+        Active:
+          - Continuation
+          - Exhaustion
+        Continuation:
+          - Exhaustion
+          - Dead
+        Exhaustion:
+          - Dead
+      # 叙事/事实驱动
+      narrative_fact_modes:
+        - Narrative-Driven
+        - Fact-Driven
+
+  FatigueCalculator:
+    enabled: true
+    timeout: 60
+    params:
+      # 简化公式: Fatigue = min(100, max(0, (count - 2) * 20))
+      count_decay_start: 3
+      block_threshold: 85
+      reduce_profit_threshold: 70
+      # 重置条件
+      reset_after_days: 30
+      # 跨类别标签
+      narrative_tags:
+        - "energy_shock"
+        - "policy_pivot"
+        - "china_demand"
+        - "liquidity_crisis"
+      # 权重修正
+      fatigue_weight_reduction: 0.5  # >70时A-1权重降50%
+
+  ConductionMapper:
+    enabled: true
+    timeout: 600
+    params:
+      # 7大宏观因子
+      macro_factors:
+        - risk_appetite
+        - interest_rate
+        - inflation
+        - growth
+        - dollar
+        - volatility
+        - liquidity
+      # 资产层
+      asset_classes:
+        - equities     # 美股指数
+        - bonds        # 美债
+        - dollar       # 美元
+        - commodities  # 黄金、原油
+        - crypto       # BTC
+      # 时间尺度
+      time_scales:
+        - intraday
+        - overnight
+        - multiweek
+      # 事件类型→传导路径映射
+      event_conduction:
+        A:  # 金融危机
+          macro: [risk_appetite_down, liquidity_down, volatility_up]
+          sector: [financial_down, defensive_up]
+        B:  # 疫情
+          macro: [growth_down, volatility_up]
+          sector: [travel_down, online_up, healthcare_up]
+        C:  # 关税
+          macro: [inflation_up, growth_risk_up]
+          sector: [export_down, domestic_up]
+        D:  # 地缘
+          macro: [inflation_up, risk_appetite_down]
+          sector: [energy_up, defense_up, travel_down]
+        E:  # 政策
+          macro: [interest_rate_up, liquidity_down]
+          sector: [financial_up, growth_down]
+        F:  # 宏观数据
+          macro: [dynamic]
+          sector: [dynamic]
+        G:  # 市场制度
+          macro: [liquidity_down, volatility_up]
+          sector: [financial_down]
+
+  MarketValidator:
+    enabled: true
+    timeout: 300
+    params:
+      # 验证checklist权重
+      weights:
+        price_reaction: 20
+        volume: 15
+        correlation: 20
+        persistence: 25
+        divergence: 20
+      # 验证阈值
+      thresholds:
+        strong: 80
+        medium: 60
+        weak: 40
+      # 持续性检查
+      persistence_window: 3600  # 1小时
+      # 分化验证
+      winner_loser_check: true
+
+  SignalScorer:
+    enabled: true
+    timeout: 120
+    params:
+      # 标准权重
+      weights:
+        A0: 0.25
+        A-1: 0.20
+        A1: 0.25
+        A1.5: 0.20
+        A0.5: 0.10
+      # E4事件非线性调整
+      e4_adjustments:
+        A-1: -0.10
+        A1: +0.10
+        A0.5: +0.10
+      e3_adjustments:
+        A-1: -0.05
+        A1: +0.05
+        A0.5: +0.05
+      # 评分区间
+      score_tiers:
+        heavy: 80
+        standard: 60
+        light: 40
+      # 拥挤度折价
+      crowding_discount: 0.30
+      # Score边界
+      score_min: -100
+      score_max: 100
+
+  # ========== 执行层模块 ==========
+  LiquidityChecker:
+    enabled: true
+    timeout: 60
+    params:
+      # 流动性状态阈值
+      thresholds:
+        green:
+          vix_max: 20
+          ted_max: 50
+          correlation_max: 0.6
+        yellow:
+          vix_min: 20
+          vix_max: 30
+          ted_min: 50
+          ted_max: 100
+          correlation_min: 0.6
+          correlation_max: 0.8
+        red:
+          vix_min: 30
+          ted_min: 100
+          correlation_min: 0.8
+      # 微观流动性
+      micro_thresholds:
+        spread_warning: 0.005    # 0.5%
+        spread_danger: 0.01     # 1.0%
+        depth_warning: 0.5       # 50%日均
+        depth_danger: 0.3       # 30%日均
+        impact_cost_warning: 0.003
+        impact_cost_danger: 0.005
+
+  RiskGatekeeper:
+    enabled: true
+    timeout: 60
+    params:
+      # 决策闸门
+      gates:
+        G1_liquidity:
+          enabled: true
+          trigger: "spread > 5 OR state = RED"
+          action: "BLOCK_NEW"
+        G2_lifecycle:
+          enabled: true
+          trigger: "state in [DEAD, ARCHIVED]"
+          action: "FORCE_CLOSE"
+        G3_fatigue:
+          enabled: true
+          trigger: "fatigue > 85"
+          action: "BLOCK_NEW"
+        G4_correlation:
+          enabled: true
+          trigger: "correlation > 0.8"
+          action: "A15_ADJUST"
+        G5_score:
+          enabled: true
+          trigger: "score区间"
+          action: "POSITION_TIER"
+        G6_policy:
+          enabled: true
+          trigger: "intervention = STRONG AND A1 >= 60"
+          action: "DIRECTION_FLIP"
+      # 一票否决优先级
+      priority_order:
+        - G1_liquidity
+        - G2_lifecycle
+        - G3_fatigue
+        - G4_correlation
+        - G5_score
+        - G6_policy
+      # G4/G6执行细则（配置驱动）
+      g1_liquidity:
+        spread_multiplier_threshold: 5
+        red_state_value: "RED"
+        final_action_on_trigger: "BLOCK"
+        human_confirm_required: true
+      g2_lifecycle:
+        blocked_states: ["Dead", "Archived"]
+        final_action_on_trigger: "FORCE_CLOSE"
+        human_confirm_required: false
+      g3_fatigue:
+        threshold: 85
+        final_action_on_trigger: "WATCH"
+        human_confirm_required: false
+      g4_correlation:
+        threshold: 0.8
+        e4_position_multiplier: 0.5
+        default_position_multiplier: 0.0
+        warning: "Correlation collapse mode."
+      g6_policy:
+        intervention_value: "STRONG"
+        a1_threshold: 60
+        direction_on_trigger: "flip"
+      # B1.1 安全降级因子（AI超时/失败时使用）
+      ai_safe_defaults:
+        enabled: true
+        on_ai_timeout:
+          action: "WATCH"
+          A0: 0
+          A-1: 0
+          A1: 0
+          A1.5: 0
+          A0.5: 100
+          reason: "ai_timeout_safe_default"
+        on_ai_error:
+          action: "BLOCK"
+          A0: 0
+          A-1: 0
+          A1: 0
+          A1.5: 0
+          A0.5: 100
+          reason: "ai_error_safe_default"
+
+  PositionSizer:
+    enabled: true
+    timeout: 30
+    params:
+      # 仓位系数
+      tiers:
+        G1:
+          score_range: [80, 100]
+          position_pct: 0.80
+          expand_tp: true
+        G2:
+          score_range: [60, 80]
+          position_pct: 0.50
+        G3:
+          score_range: [40, 60]
+          position_pct: 0.20
+          tight_sl: true
+        G4:
+          score_range: [20, 40]
+          position_pct: 0
+          action: "WATCH_ONLY"
+        G5:
+          score_range: [0, 20]
+          position_pct: 0
+          action: "FORBIDDEN"
+      # 流动性调整
+      liquidity_adjustments:
+        GREEN: 1.0
+        YELLOW: 0.5
+        YELLOW_STRONG: 0.3  # Score>60时保留30%
+        RED: 0
+      # 单日风控
+      daily:
+        max_loss_pct: 0.05
+        max_open_events: 5
+
+  ExitManager:
+    enabled: true
+    timeout: 30
+    params:
+      # 止损类型
+      stop_loss:
+        hard:
+          trigger: "loss >= 2R"
+          action: "CLOSE_ALL"
+        trailing:
+          trigger: "profit_drop >= 50%"
+          action: "CLOSE_50%"
+        time:
+          trigger: "hold_days >= 5 AND not_target"
+          action: "EVALUATE"
+      # 止盈规则
+      take_profit:
+        tier1:
+          profit_range: [1, 2]
+          action: "CLOSE_33%"
+          move_sl: 1
+        tier2:
+          profit_range: [2, 3]
+          action: "CLOSE_33%"
+          move_sl: 2
+        tier3:
+          profit_range: [3, 999]
+          action: "TRAIL_20%"
+      # 提前退出
+      early_exit:
+        momentum_loss:
+          trigger: "not_new_high 3days"
+          action: "CLOSE_25%"
+        volume_shrink:
+          trigger: "volume < 50dma * 0.5"
+          action: "CLOSE_25%"
+        narrative_cool:
+          trigger: "news_freq < peak * 0.5"
+          action: "OBSERVE"
+        tech_weak:
+          trigger: "price < ma20"
+          action: "CLOSE_50%"
+
+  # ========== 辅助模块 ==========
+  Logger:
+    enabled: true
+    params:
+      level: INFO
+      format: json
+      audit_fields:
+        - event_id
+        - timestamp
+        - user
+        - action
+        - result
+
+  CacheManager:
+    enabled: true
+    timeout: 30
+    params:
+      # 事件去重
+      dedup_window: 3600  # 1小时内相同事件去重
+      # 疲劳度缓存
+      fatigue_ttl: 86400  # 24小时
+      # 清理规则
+      cleanup:
+        archive_after_days: 30
+        delete_after_days: 90
+
+  RetryHandler:
+    enabled: true
+    params:
+      max_retries: 3
+      backoff:
+        initial: 1
+        max: 10
+        multiplier: 2
+      retry_codes:
+        - 429
+        - 500
+        - 502
+        - 503
+        - 504
+
+  ExecutionAdapter:
+    enabled: true
+    params:
+      # dry_run | paper | live
+      mode: "dry_run"

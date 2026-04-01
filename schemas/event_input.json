@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Event Input Schema",
+  "description": "EDT模块通用输入格式 - 事件原始数据",
+  "type": "object",
+  "required": ["headline", "source", "timestamp"],
+  "properties": {
+    "headline": {
+      "type": "string",
+      "description": "事件标题/摘要",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "source": {
+      "type": "string",
+      "description": "信息来源URL"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["official", "wire", "media", "social", "other"],
+      "description": "来源类型"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "事件发生时间"
+    },
+    "raw_text": {
+      "type": "string",
+      "description": "原始文本内容"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "附加元数据",
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "region": {
+          "type": "string"
+        },
+        "asset_class": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

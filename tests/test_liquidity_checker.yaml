@@ -1,0 +1,13 @@
+module: liquidity_checker
+description: LiquidityChecker 最小用例
+cases:
+  - id: LQ-YAML-001
+    name: yellow_state
+    type: normal
+    input:
+      vix: 25
+      ted: 60
+      correlation: 0.65
+      spread_pct: 0.004
+    expected:
+      liquidity_state: "YELLOW"

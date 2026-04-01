@@ -1,0 +1,144 @@
+module: lifecycle_manager
+description: 生命周期管理模块测试用例
+cases:
+  - id: LM-001
+    name: detected_to_active_with_official_confirmation
+    type: normal
+    description: A级确认且市场验证通过，事件应进入 Active
+    input:
+      event_id: "ME-C-20260330-001.V1.0"
+      category: "C"
+      severity: "E3"
+      source_rank: "A"
+      headline: "美国宣布新一轮关税措施"
+      detected_at: "2026-03-30T13:30:00Z"
+      is_official_confirmed: true
+      market_validated: true
+      has_material_update: true
+      elapsed_hours: 4
+    expected:
+      lifecycle_state: "Active"
+      catalyst_state: "first_impulse"
+      trade_eligibility: "tradable"
+      holding_horizon: "overnight"
+      needs_manual_review: false
+
+  - id: LM-002
+    name: rumor_stays_detected
+    type: abnormal
+    description: C级来源且无官方确认，保持 Detected
+    input:
+      event_id: "ME-D-20260331-001.V1.0"
+      category: "D"
+      severity: "E2"
+      source_rank: "C"
+      headline: "社交媒体流传地缘冲突升级"
+      detected_at: "2026-03-31T10:00:00Z"
+      is_official_confirmed: false
+      market_validated: false
+      has_material_update: false
+      elapsed_hours: 2
+    expected:
+      lifecycle_state: "Detected"
+      catalyst_state: "first_impulse"
+      trade_eligibility: "watch"
+      needs_manual_review: false
+
+  - id: LM-003
+    name: stale_event_goes_exhaustion
+    type: boundary
+    description: 事件超过48小时无重大更新且市场验证失效，应进入 Exhaustion
+    input:
+      event_id: "ME-E-20260328-003.V1.1"
+      category: "E"
+      severity: "E3"
+      source_rank: "A"
+      headline: "政策转向预期升温"
+      detected_at: "2026-03-28T09:00:00Z"
+      last_updated_at: "2026-03-28T12:00:00Z"
+      previous_lifecycle_state: "Active"
+      previous_catalyst_state: "continuation"
+      is_official_confirmed: true
+      market_validated: false
+      has_material_update: false
+      elapsed_hours: 54
+      contradicted_by_new_fact: false
+    expected:
+      lifecycle_state: "Exhaustion"
+      catalyst_state: "exhaustion"
+      trade_eligibility: "watch"
+      holding_horizon: "none"
+
+  - id: LM-004
+    name: contradicted_event_goes_dead
+    type: boundary
+    description: 事件被新事实证伪，应进入 Dead
+    input:
+      event_id: "ME-F-20260331-002.V1.0"
+      category: "F"
+      severity: "E2"
+      source_rank: "B"
+      headline: "宏观数据传闻被官方修正"
+      detected_at: "2026-03-31T08:30:00Z"
+      previous_lifecycle_state: "Verified"
+      is_official_confirmed: false
+      market_validated: false
+      contradicted_by_new_fact: true
+      elapsed_hours: 6
+    expected:
+      lifecycle_state: "Dead"
+      catalyst_state: "dead"
+      trade_eligibility: "blocked"
+
+  - id: LM-005
+    name: official_but_not_market_validated
+    type: normal
+    description: 已官方确认但市场未验证，应进入 Verified
+    input:
+      event_id: "ME-B-20260331-003.V1.0"
+      category: "B"
+      severity: "E2"
+      source_rank: "A"
+      headline: "公共卫生事件确认"
+      detected_at: "2026-03-31T08:00:00Z"
+      is_official_confirmed: true
+      market_validated: false
+      elapsed_hours: 3
+    expected:
+      lifecycle_state: "Verified"
+      catalyst_state: "first_impulse"
+      trade_eligibility: "watch"
+
+  - id: LM-006
+    name: active_to_continuation_with_material_update
+    type: boundary
+    description: 已处于Active并持续24小时以上且有更新，进入Continuation
+    input:
+      event_id: "ME-E-20260330-005.V1.1"
+      category: "E"
+      severity: "E4"
+      source_rank: "A"
+      headline: "政策持续加码"
+      detected_at: "2026-03-30T07:00:00Z"
+      previous_lifecycle_state: "Active"
+      is_official_confirmed: true
+      market_validated: true
+      has_material_update: true
+      elapsed_hours: 30
+    expected:
+      lifecycle_state: "Continuation"
+      catalyst_state: "continuation"
+      trade_eligibility: "tradable"
+      holding_horizon: "multiweek"
+
+  - id: LM-007
+    name: missing_required_field_should_fail
+    type: abnormal
+    description: 缺少基础字段时应触发输入校验失败
+    input:
+      category: "C"
+      severity: "E3"
+      source_rank: "A"
+      detected_at: "2026-03-30T13:30:00Z"
+    expected_error:
+      code: "INVALID_INPUT"

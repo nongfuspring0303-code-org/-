@@ -1,0 +1,13 @@
+module: event_capture
+description: EventCapture 最小用例
+cases:
+  - id: EC-YAML-001
+    name: capture_normal
+    type: normal
+    input:
+      headline: "Fed announces emergency liquidity action"
+      source: "https://www.reuters.com/markets/us/example"
+      timestamp: "2026-04-01T10:45:00Z"
+      vix: 28
+    expected:
+      captured: true

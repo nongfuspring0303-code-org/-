@@ -1,0 +1,10 @@
+module: source_ranker
+description: SourceRanker 最小用例
+cases:
+  - id: SR-YAML-001
+    name: reuters_rank_b
+    type: normal
+    input:
+      source_url: "https://www.reuters.com/markets/us/example"
+    expected:
+      rank: "B"

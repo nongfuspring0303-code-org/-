@@ -17,6 +17,11 @@ import xml.etree.ElementTree as ET
 import urllib.request
 
 from edt_module_base import EDTModule, ModuleInput, ModuleOutput, ModuleStatus
+from pathlib import Path
+
+
+def _default_config_path() -> str:
+    return str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
 
 
 def _now_iso() -> str:
@@ -51,7 +56,14 @@ def _parse_rss(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
 
 def _safe_fetch(url: str, timeout: int) -> Optional[str]:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", errors="replace")
     except Exception:
         return None
@@ -61,7 +73,7 @@ class NewsIngestion(EDTModule):
     """A0: real news ingestion with fallback and standardization."""
 
     def __init__(self, config_path: Optional[str] = None):
-        super().__init__("NewsIngestion", "1.0.0", config_path)
+        super().__init__("NewsIngestion", "1.0.0", config_path or _default_config_path())
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
@@ -128,7 +140,7 @@ class EventEvidenceScorer(EDTModule):
     """A1: evidence scoring for AI event intelligence."""
 
     def __init__(self, config_path: Optional[str] = None):
-        super().__init__("EventEvidenceScorer", "1.0.0", config_path)
+        super().__init__("EventEvidenceScorer", "1.0.0", config_path or _default_config_path())
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data

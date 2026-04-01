@@ -472,8 +472,9 @@ modules:
       timeout: 8
       retries: 2
       sources:
-        - "https://www.federalreserve.gov/feeds/press_all.xml"
-        - "https://www.sec.gov/rss/press-release.rss"
+        - "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+        - "https://www.marketwatch.com/rss/topstories"
+        - "https://seekingalpha.com/market_currents.xml"
 
   EventEvidenceScorer:
     enabled: true

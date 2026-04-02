@@ -1,0 +1,10 @@
+# Default owners
+* @nongfuspring0303-code
+
+# C owner enforced review targets
+/module-registry.yaml @nongfuspring0303-code
+/schemas/* @nongfuspring0303-code
+/scripts/workflow_runner.py @nongfuspring0303-code
+/scripts/execution_adapter.py @nongfuspring0303-code
+/EDT-AI协同开发与集成协议(Git版).md @nongfuspring0303-code
+/阶段三-指挥中心全链条联动蓝图.md @nongfuspring0303-code

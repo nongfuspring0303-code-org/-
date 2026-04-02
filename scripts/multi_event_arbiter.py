@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -29,8 +30,12 @@ class MultiEventArbiter:
         )
 
     def _load_config(self) -> Dict[str, Any]:
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
+            logging.warning("Failed to load arbiter config; fallback to defaults: %s", exc)
+            return {}
 
     @staticmethod
     def _event_key(event: Dict[str, Any]) -> str:

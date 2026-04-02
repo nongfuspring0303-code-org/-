@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict
 
@@ -36,6 +39,7 @@ class WorkflowRunner:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.request_store_path = Path(request_store_path) if request_store_path else self.logs_dir / "seen_request_ids.txt"
         self.request_store_path.parent.mkdir(parents=True, exist_ok=True)
+        self._request_lock_path = self.request_store_path.with_suffix(self.request_store_path.suffix + ".lock")
         self._request_lock = threading.Lock()
         self._seen_request_ids = self._load_seen_request_ids()
 
@@ -172,35 +176,74 @@ class WorkflowRunner:
         return base
 
     def _load_seen_request_ids(self) -> set[str]:
-        if not self.request_store_path.exists():
-            return set()
         ids: set[str] = set()
         with self._request_lock:
-            with open(self.request_store_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    req = line.strip()
-                    if req:
-                        ids.add(req)
+            with self._request_file_lock():
+                if not self.request_store_path.exists():
+                    return set()
+                with open(self.request_store_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        req = line.strip()
+                        if req:
+                            ids.add(req)
         return ids
 
     def _persist_request_id(self, request_id: str) -> None:
         with open(self.request_store_path, "a", encoding="utf-8") as f:
             f.write(request_id + "\n")
 
+    @contextmanager
+    def _request_file_lock(self):
+        lock_path = str(self._request_lock_path)
+        for _ in range(200):
+            try:
+                fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                break
+            except FileExistsError:
+                time.sleep(0.01)
+        else:
+            raise TimeoutError(f"Could not acquire request-id lock: {lock_path}")
+
+        try:
+            yield
+        finally:
+            try:
+                os.remove(lock_path)
+            except FileNotFoundError:
+                pass
+
+    def _request_id_exists_on_disk(self, request_id: str) -> bool:
+        if not self.request_store_path.exists():
+            return False
+        with open(self.request_store_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip() == request_id:
+                    return True
+        return False
+
     def _is_request_processed(self, request_id: str | None) -> bool:
         if not request_id:
             return False
         with self._request_lock:
-            return request_id in self._seen_request_ids
+            if request_id in self._seen_request_ids:
+                return True
+            with self._request_file_lock():
+                on_disk = self._request_id_exists_on_disk(request_id)
+            if on_disk:
+                self._seen_request_ids.add(request_id)
+            return on_disk
 
     def _mark_request_processed(self, request_id: str | None) -> None:
         if not request_id:
             return
         with self._request_lock:
-            if request_id in self._seen_request_ids:
-                return
-            self._seen_request_ids.add(request_id)
-            self._persist_request_id(request_id)
+            with self._request_file_lock():
+                if request_id in self._seen_request_ids or self._request_id_exists_on_disk(request_id):
+                    self._seen_request_ids.add(request_id)
+                    return
+                self._persist_request_id(request_id)
+                self._seen_request_ids.add(request_id)
 
     @staticmethod
     def _run_with_retry(module: Any, payload: Dict[str, Any], retries: int = 2) -> Any:

@@ -291,6 +291,16 @@ class EventBus:
         
         self._store_message(message)
         await self._broadcast(event_type, message.to_json())
+        
+        # Also call local handlers for in-process handling
+        if event_type in self.handlers:
+            try:
+                handler = self.handlers[event_type]
+                result = handler(payload)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                logger.error(f"Handler error for {event_type}: {e}")
     
     def get_stats(self) -> dict:
         """获取统计信息"""

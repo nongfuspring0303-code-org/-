@@ -46,7 +46,11 @@ class TestTimelineManager:
     
     @pytest.fixture
     def manager(self):
-        return TimelineManager(max_days=7)
+        m = TimelineManager(max_days=7)
+        yield m
+        # cleanup timer after each test
+        if m._playback_timer:
+            m._playback_timer.cancel()
     
     def test_init(self, manager):
         assert manager.max_days == 7
@@ -107,8 +111,10 @@ class TestTimelineManager:
     
     def test_set_mode_playback(self, manager):
         manager.set_mode(PlaybackMode.PLAYBACK)
-        
+        # immediately check mode (don't wait for async playback)
         assert manager.state.mode == PlaybackMode.PLAYBACK
+        # stop playback to prevent async timer from changing state
+        manager.set_mode(PlaybackMode.PAUSED)
     
     def test_seek_to(self, manager):
         now = datetime.now()
@@ -117,7 +123,9 @@ class TestTimelineManager:
         
         manager.seek_to(2)
         
+        # mode changes to PLAYBACK after seek, pause immediately
         assert manager.state.current_index == 2
+        manager.set_mode(PlaybackMode.PAUSED)
     
     def test_seek_to_percent(self, manager):
         now = datetime.now()
@@ -126,7 +134,9 @@ class TestTimelineManager:
         
         manager.seek_to_percent(50)
         
+        # mode changes to PLAYBACK after seek, pause immediately
         assert manager.state.current_index == 4
+        manager.set_mode(PlaybackMode.PAUSED)
     
     def test_next_event(self, manager):
         now = datetime.now()

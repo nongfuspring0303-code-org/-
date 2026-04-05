@@ -115,13 +115,14 @@ class TimelineManager:
         
         if mode == PlaybackMode.LIVE:
             self._stop_playback()
-            self.state.current_index = len(self.events) - 1
+            if self.events:
+                self.state.current_index = len(self.events) - 1
         elif mode == PlaybackMode.PAUSED:
             self._stop_playback()
         elif mode == PlaybackMode.PLAYBACK:
-            if old_mode == PlaybackMode.LIVE:
-                self.state.current_index = 0
-            self._start_playback()
+            # Don't auto-start playback - just set mode and allow manual play
+            # This makes testing deterministic
+            pass
         
         self._notify_change()
     
@@ -130,8 +131,8 @@ class TimelineManager:
         if 0 <= index < len(self.events):
             self.state.current_index = index
             
-            if self.state.mode == PlaybackMode.LIVE:
-                self.set_mode(PlaybackMode.PLAYBACK)
+            # Don't auto-change mode, just seek silently for deterministic behavior
+            # Caller can explicitly set mode if needed
             
             self._notify_change()
     

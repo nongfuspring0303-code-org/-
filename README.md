@@ -8,10 +8,10 @@
 
 ## 必读入口
 
-- `阶段三-指挥中心全链条联动蓝图.md`（阶段三唯一任务入口）
+- `阶段三任务分工说明.md`（阶段三唯一任务入口）
 - `EDT-AI协同开发与集成协议(Git版).md`
 
-说明：若与历史阶段文档冲突，以阶段三蓝图与协同协议为准。
+说明：若与历史阶段文档冲突，以Phase3任务分工说明与协同协议为准。
 
 ## 目录结构
 
@@ -68,6 +68,26 @@ python3 scripts/verify_direction_consistency.py --samples 100 --min-rate 0.8
 python3 scripts/system_healthcheck.py
 python3 scripts/verify_execution_no_pytest.py
 ```
+
+## C 模块联调
+
+```bash
+# 一键启动（含 Mock 流）
+python3 scripts/run_c_module_stack.py
+
+# 无 Mock，等待 A/B 接入推送
+python3 scripts/run_c_module_stack.py --no-mock
+
+# A/B 模块可通过 ingest 接口推送消息
+python3 scripts/push_ab_event.py --type event-update --trace-id evt_demo_001
+python3 scripts/push_ab_event.py --type sector-update --trace-id evt_demo_001
+python3 scripts/push_ab_event.py --type opportunity-update --trace-id evt_demo_001
+```
+
+页面入口：
+- `canvas/index.html`（三栏联动）
+- `canvas/config.html`（配置中心 + 人工纠错）
+- `canvas/monitor.html`（健康监控）
 
 ## 协作硬规则
 

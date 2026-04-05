@@ -47,6 +47,10 @@ SignalScorer + AISignalAdapter -> LiquidityChecker -> RiskGatekeeper -> Position
 - `RiskGatekeeper` 增强（B2/B3）
   - 增加 G7（AI 复核/降级闸门）
   - 决策输出新增 `decision_summary` 与 `reasoning`
+- `OpportunityScorer`（Phase3-B1/B2/B3）
+  - 优质股票池配置：`configs/premium_stock_pool.yaml`
+  - 机会评分与机会卡：`scripts/opportunity_score.py`
+  - 多空分化验证：`scripts/verify_direction_consistency.py`
 
 ## 快速验收
 
@@ -55,6 +59,7 @@ python3 -m pytest -q
 PYTHONPYCACHEPREFIX=/tmp/pycache python3 scripts/system_healthcheck.py
 bash scripts/verify_phase12.sh
 bash scripts/verify_fullchain.sh
+python3 scripts/verify_direction_consistency.py --samples 100 --min-rate 0.8
 ```
 
 若环境中 `pytest` 与 Python 版本不兼容，至少保留：
@@ -63,6 +68,26 @@ bash scripts/verify_fullchain.sh
 python3 scripts/system_healthcheck.py
 python3 scripts/verify_execution_no_pytest.py
 ```
+
+## C 模块联调
+
+```bash
+# 一键启动（含 Mock 流）
+python3 scripts/run_c_module_stack.py
+
+# 无 Mock，等待 A/B 接入推送
+python3 scripts/run_c_module_stack.py --no-mock
+
+# A/B 模块可通过 ingest 接口推送消息
+python3 scripts/push_ab_event.py --type event-update --trace-id evt_demo_001
+python3 scripts/push_ab_event.py --type sector-update --trace-id evt_demo_001
+python3 scripts/push_ab_event.py --type opportunity-update --trace-id evt_demo_001
+```
+
+页面入口：
+- `canvas/index.html`（三栏联动）
+- `canvas/config.html`（配置中心 + 人工纠错）
+- `canvas/monitor.html`（健康监控）
 
 ## 协作硬规则
 

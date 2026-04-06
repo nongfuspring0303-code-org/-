@@ -35,9 +35,10 @@ def _default_config_path() -> str:
 
 
 class RealtimeNewsMonitor:
-    def __init__(self, config_path: Optional[str] = None, poll_interval: int = 60):
+    def __init__(self, config_path: Optional[str] = None, poll_interval: int = 60, api_url: Optional[str] = None):
         self.config_path = config_path or _default_config_path()
         self.poll_interval = poll_interval
+        self.api_url = api_url or "http://127.0.0.1:8787"
         self.last_news_signature = ""  # 用于检测新新闻
         self._load_news_module()
     
@@ -119,15 +120,99 @@ class RealtimeNewsMonitor:
             
             result = self.workflow.run(payload)
             
-            if result.get("status") == "success":
+            if "intel" in result and "analysis" in result:
                 logger.info("✅ A/B计算完成")
-                logger.info(f"   - 板块数: {len(result.get('sectors', []))}")
-                logger.info(f"   - 机会数: {len(result.get('opportunities', []))}")
+                sectors = result.get("analysis", {}).get("conduction", {}).get("sector_impacts", [])
+                opportunities = result.get("opportunities", [])
+                logger.info(f"   - 板块数: {len(sectors)}")
+                logger.info(f"   - 机会数: {len(opportunities)}")
+                self._push_sectors_to_c(result)
             else:
-                logger.warning(f"⚠️ A/B计算异常: {result.get('error')}")
+                logger.warning(f"⚠️ A/B计算异常: {result}")
                 
         except Exception as e:
             logger.error(f"A/B计算失败: {e}")
+    
+    def _push_sectors_to_c(self, result: Dict[str, Any]):
+        """推送板块和机会到C模块"""
+        if not self.api_url:
+            return
+        
+        try:
+            from datetime import datetime, timezone
+            
+            analysis = result.get("analysis", {})
+            intel = result.get("intel", {})
+            event_object = intel.get("event_object", {})
+            ts = datetime.now(timezone.utc).isoformat()
+            trace_id = event_object.get("event_id", "unknown")
+            
+            sectors = []
+            for item in analysis.get("conduction", {}).get("sector_impacts", []):
+                direction_raw = str(item.get("direction", "WATCH")).lower()
+                if direction_raw in {"benefit", "long"}:
+                    direction = "LONG"
+                elif direction_raw in {"hurt", "short"}:
+                    direction = "SHORT"
+                else:
+                    direction = "WATCH"
+                    
+                sectors.append({
+                    "name": item.get("sector", "未知板块"),
+                    "direction": direction,
+                    "impact_score": round(min(1.0, max(0.0, float(analysis.get("conduction", {}).get("confidence", 0)) / 100.0)), 2),
+                    "confidence": round(min(1.0, max(0.0, float(analysis.get("conduction", {}).get("confidence", 0)) / 100.0)), 2),
+                })
+            
+            data = {
+                "trace_id": trace_id,
+                "schema_version": "v1.0",
+                "sectors": sectors,
+                "conduction_chain": [],
+                "timestamp": ts,
+            }
+            
+            import urllib.request
+            
+            # 推送 sector-update
+            endpoint = f"{self.api_url}/api/ingest/sector-update"
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(data).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    logger.info(f"✅ 推送板块到C模块成功")
+            
+            # 推送 event-update
+            event_data = {
+                "trace_id": trace_id,
+                "schema_version": "v1.0",
+                "headline": event_object.get("headline", "A/B 实时计算事件"),
+                "source": event_object.get("source_url", "A-Module"),
+                "severity": event_object.get("severity", "E3"),
+                "evidence_score": 0,
+                "narrative_state": "Fact-Driven",
+                "timestamp": ts,
+            }
+            
+            endpoint = f"{self.api_url}/api/ingest/event-update"
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(event_data).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    logger.info(f"✅ 推送事件到C模块成功")
+                    
+        except Exception as e:
+            logger.error(f"推送失败: {e}")
     
     def _push_to_c_module(self, data: Dict[str, Any], api_url: str):
         """推送到C模块"""
@@ -226,7 +311,8 @@ def main():
     
     args = parser.parse_args()
     
-    monitor = RealtimeNewsMonitor(poll_interval=args.poll_interval, test_mode=args.test)
+    test_mode = getattr(args, 'test', False)
+    monitor = RealtimeNewsMonitor(poll_interval=args.poll_interval, api_url=args.api)
     
     if args.once:
         monitor.run_once()

@@ -165,7 +165,7 @@ class OpportunityScorer:
         if score < 0.6:
             flags.append({"type": "volatility", "level": "medium", "description": "信号强度偏弱"})
 
-        if stock.market_cap_billion < 700:
+        if stock.market_cap_billion < 500:
             flags.append({"type": "market_cap", "level": "medium", "description": "市值体量偏小"})
 
         if candidate_direction and candidate_direction != target_signal:

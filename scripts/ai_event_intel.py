@@ -239,6 +239,7 @@ class NewsIngestion(EDTModule):
                     "raw_text": "Fallback news item used when sources fail.",
                     "source_type": "fallback",
                     "is_fallback": True,
+                    "is_test_data": True,  # 标记为测试数据
                 }
             ]
 

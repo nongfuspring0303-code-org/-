@@ -15,6 +15,16 @@ modules:
         - "sanction"
         - "crisis"
         - "emergency"
+        - "rate"
+        - "interest"
+        - "Fed"
+        - "Dimon"
+        - "JPMorgan"
+        - "bank"
+        - "CEO"
+        - "market"
+        - "stock"
+        - "trade"
       # vix_amplify_threshold: VIX放大阈值，当VIX>=此值时放大严重程度（不触发事件）
       vix_amplify_threshold: 20
       min_source_rank: "C"
@@ -523,32 +533,32 @@ modules:
 
   NewsIngestion:
     enabled: true
-    timeout: 8
+    timeout: 1
     params:
-      timeout: 8
-      retries: 2
+      timeout: 1
+      retries: 0
       dedupe: true
       dedupe_window_minutes: 120
       dedupe_similarity_threshold: 0.78
       dedupe_min_token_overlap: 3
       enable_source_rank: true
       sources:
-        - "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom"
-        - "https://www.sec.gov/news/pressreleases.rss"
+        - "https://www.cnbc.com/id/10000664/device/rss/rss.html"
+        - "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=en-US&gl=US&ceid=US:en"
+        - "https://www.marketwatch.com/rss/topstories"
+        - "https://feeds.apnews.com/rss/business"
+        - "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+        - "https://seekingalpha.com/market_currents.xml"
+        - "https://www.finra.org/rss.xml"
+        - "https://www.nasdaq.com/feed/rssoutbound?category=Markets"
         - "https://www.federalreserve.gov/feeds/press_all.xml"
         - "https://www.federalreserve.gov/feeds/speeches.xml"
         - "https://ustr.gov/rss.xml"
-        - "https://www.nasdaq.com/feed/rssoutbound?category=Markets"
-        - "https://www.finra.org/rss.xml"
-        - "https://news.google.com/rss/search?q=when:24h+allinurl:reuters.com&hl=en-US&gl=US&ceid=US:en"
+        - "https://www.sec.gov/news/pressreleases.rss"
+        - "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom"
         - "https://www.ft.com/rss/home"
-        - "https://www.cnbc.com/id/10000664/device/rss/rss.html"
-        - "https://feeds.apnews.com/rss/business"
         - "https://www.barrons.com/xml/rss/3_7202.xml"
         - "https://www.economist.com/rss.xml"
-        - "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
-        - "https://www.marketwatch.com/rss/topstories"
-        - "https://seekingalpha.com/market_currents.xml"
 
   EventEvidenceScorer:
     enabled: true

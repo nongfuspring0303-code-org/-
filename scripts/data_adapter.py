@@ -27,6 +27,7 @@ class DataAdapter:
 
     def __init__(self, config_path: Optional[str] = None):
         self.cache = CacheManager() if CacheManager else None
+        self.config_path = config_path
         self.config = self._load_config(config_path)
 
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
@@ -70,7 +71,12 @@ class DataAdapter:
             NewsIngestion = None
 
         if NewsIngestion:
-            out = NewsIngestion().run({"max_items": 1})
+            # 构建完整配置文件路径
+            config_path = self.config_path
+            if not config_path:
+                config_path = str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
+            # 使用当前配置文件的超时设置
+            out = NewsIngestion(config_path).run({"max_items": 1})
             if out.data.get("items"):
                 item = out.data["items"][0]
                 return {
@@ -92,7 +98,7 @@ class DataAdapter:
             "headline": "Federal Reserve announces emergency rate cut of 50bps",
             "source": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
             "source_url": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
-            "source_type": "official",
+            "source_type": "fallback",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "raw_text": "The Federal Reserve has announced an emergency rate cut...",
             "metadata": {
@@ -100,6 +106,8 @@ class DataAdapter:
                 "region": "US",
                 "asset_class": ["equities", "bonds", "usd"],
                 "trace_id": "TRC-FALLBACK-0001",
+                "is_test_data": True,  # 标记为测试数据
+                "test_data_note": "当无法获取真实新闻时使用的fallback测试数据",
             }
         }
 

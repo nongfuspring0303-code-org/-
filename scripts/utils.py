@@ -181,18 +181,43 @@ def format_report(report: Dict[str, Any], format_type: str = "human") -> str:
     # 人类可读格式
     lines = []
     
-    # 标题
-    lines.append("=" * 60)
-    lines.append(f"项目守卫报告 - {report.get('timestamp', '未知时间')}")
+    # ==================== 最上层一眼决策区 ====================
+    lines.append("🚨 最上层一眼决策区")
     lines.append("=" * 60)
     
-    # 总体状态
+    # 最终状态
     status = report.get("overall_status", "UNKNOWN")
     stats = report.get("statistics", {})
+    red_count = stats.get("red", 0)
+    yellow_count = stats.get("yellow", 0)
+    fixed_count = stats.get("fixed", 0)
     
-    lines.append(f"\n📊 总体状态: {status}")
-    lines.append(f"   红灯: {stats.get('red', 0)} | 黄灯: {stats.get('yellow', 0)} | 绿灯: {stats.get('green', 0)}")
-    lines.append(f"   已修复: {stats.get('fixed', 0)}")
+    # 是否允许继续推进
+    if status == "PASS":
+        allow_continue = "允许"
+    elif status == "WARN":
+        allow_continue = "允许但需复核"
+    else:  # FAIL
+        allow_continue = "不允许"
+    
+    # 一句话结论
+    conclusion = report.get("conclusion", "")
+    
+    lines.append(f"最终状态: {status}")
+    lines.append(f"是否允许继续推进: {allow_continue}")
+    lines.append(f"红灯数量: {red_count}")
+    lines.append(f"黄灯数量: {yellow_count}")
+    lines.append(f"已自动修复数量: {fixed_count}")
+    lines.append(f"一句话结论: {conclusion}")
+    
+    lines.append("=" * 60)
+    lines.append("\n📋 详细报告")
+    lines.append("-" * 60)
+    
+    # 详细统计
+    lines.append(f"📊 总体状态: {status}")
+    lines.append(f"   红灯: {red_count} | 黄灯: {yellow_count} | 绿灯: {stats.get('green', 0)}")
+    lines.append(f"   已修复: {fixed_count}")
     
     # 验证结果
     validation = report.get("validation", {})

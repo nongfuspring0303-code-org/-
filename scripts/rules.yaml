@@ -109,18 +109,18 @@ rules:
   - id: "WS-002"
     type: "safety_mechanism_missing"
     description: "配置中缺少fallback机制"
-    severity: "low"
+    severity: "high"
     check: "config_contains('fallback')"
     fixable: false
-    message: "配置中缺少fallback机制定义，建议添加降级策略"
+    message: "配置中缺少fallback机制定义，存在系统风险"
   
   - id: "WS-003"
     type: "safety_mechanism_missing"
     description: "缺少safe-stop机制检查"
-    severity: "medium"
+    severity: "high"
     check: "config_contains('safe_stop') or config_contains('emergency_stop')"
     fixable: false
-    message: "缺少安全停止机制，建议添加紧急停止功能"
+    message: "缺少安全停止机制，存在系统风险"
 
   # ========== Schema文件检查 ==========
   - id: "SC-001"

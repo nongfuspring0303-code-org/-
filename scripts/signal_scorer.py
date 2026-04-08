@@ -27,6 +27,17 @@ class SignalScorer(EDTModule):
             "A0.5": 0.10,
         }
 
+    def _weights_from_config(self) -> Dict[str, float]:
+        cfg = self._get_config("modules.SignalScorer.params.weights", {})
+        weights = dict(self.weights)
+        for key in weights:
+            try:
+                if key in cfg:
+                    weights[key] = float(cfg[key])
+            except (TypeError, ValueError):
+                continue
+        return weights
+
     def validate_input(self, input_data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         required = ["event_id", "severity", "fatigue_final", "correlation"]
         for key in required:
@@ -37,7 +48,7 @@ class SignalScorer(EDTModule):
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
         adjustments = []
-        weights = dict(self.weights)
+        weights = self._weights_from_config()
 
         missing_scores = [key for key in ("A0", "A-1", "A1", "A1.5", "A0.5") if key not in raw]
         if missing_scores:

@@ -66,10 +66,10 @@ def _news_payload(item: Dict[str, Any]) -> Dict[str, Any]:
         "timestamp": item.get("timestamp"),
         "raw_text": item.get("raw_text", item.get("headline", "")),
         "sequence": 1,
-        "vix": item.get("vix", 0),
-        "vix_change_pct": item.get("vix_change_pct", 0),
-        "spx_move_pct": item.get("spx_move_pct", 0),
-        "sector_move_pct": item.get("sector_move_pct", 0),
+        "vix": item.get("vix"),
+        "vix_change_pct": item.get("vix_change_pct"),
+        "spx_move_pct": item.get("spx_move_pct"),
+        "sector_move_pct": item.get("sector_move_pct"),
     }
 
 

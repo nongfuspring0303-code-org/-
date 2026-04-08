@@ -61,7 +61,10 @@ class MultiEventArbiter:
         mapping = {"E4": 5, "E3": 4, "E2": 3, "E1": 2, "E0": 1}
         if sev in mapping:
             return mapping[sev]
-        vix = float(event.get("vix", 0))
+        try:
+            vix = float(event.get("vix")) if event.get("vix") is not None else 0.0
+        except (TypeError, ValueError):
+            vix = 0.0
         if vix >= 40:
             return 5
         if vix >= 25:

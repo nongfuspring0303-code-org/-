@@ -149,10 +149,10 @@ class RealtimeNewsMonitor:
                 "headline": news.get("headline"),
                 "source": news.get("source_url"),
                 "timestamp": news.get("timestamp"),
-                "vix": _num_or_default(market.get("vix_level"), 20),
-                "vix_change_pct": _num_or_default(market.get("vix_change_pct"), 0),
-                "spx_move_pct": _num_or_default(market.get("spx_change_pct"), 0),
-                "sector_move_pct": _num_or_default(market.get("etf_volatility", {}).get("change_pct"), 0),
+                "vix": _num_or_default(market.get("vix_level"), None),
+                "vix_change_pct": _num_or_default(market.get("vix_change_pct"), None),
+                "spx_move_pct": _num_or_default(market.get("spx_change_pct"), None),
+                "sector_move_pct": _num_or_default(market.get("etf_volatility", {}).get("change_pct"), None),
                 "sequence": 1,
             }
             

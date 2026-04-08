@@ -46,6 +46,15 @@ def _keyword_matches(text: str, keyword: str) -> bool:
     return needle in tokens
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class EventCapture(EDTModule):
     """Capture raw event and provide first-pass category."""
 
@@ -66,7 +75,7 @@ class EventCapture(EDTModule):
         
         # 关键词匹配才触发，VIX仅作为放大器（不单独触发）
         keyword_matched = any(_keyword_matches(headline, k) for k in keywords)
-        vix_level = float(raw.get("vix", 0))
+        vix_level = _safe_float(raw.get("vix"), 0.0)
         vix_amplify_threshold = float(self._get_config("modules.EventCapture.params.vix_amplify_threshold", 20))
         vix_amplify = vix_level >= vix_amplify_threshold
         
@@ -153,10 +162,10 @@ class SeverityEstimator(EDTModule):
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
-        vix = float(raw.get("vix", 0))
-        vix_change_pct = float(raw.get("vix_change_pct", 0))
-        spx_move_pct = float(raw.get("spx_move_pct", 0))
-        sector_move_pct = float(raw.get("sector_move_pct", 0))
+        vix = _safe_float(raw.get("vix"), 0.0)
+        vix_change_pct = _safe_float(raw.get("vix_change_pct"), 0.0)
+        spx_move_pct = _safe_float(raw.get("spx_move_pct"), 0.0)
+        sector_move_pct = _safe_float(raw.get("sector_move_pct"), 0.0)
 
         p = self._get_config("modules.SeverityEstimator.params", {})
         if vix >= float(p.get("vix_e4_absolute", 40)) or spx_move_pct >= float(p.get("spx_vol_e4_pct", 3.0)):

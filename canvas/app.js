@@ -2,7 +2,8 @@ const CONFIG = {
   WS_URL: window.RUNTIME_CONFIG?.WS_URL || 'ws://127.0.0.1:18765',
   API_BASE: window.RUNTIME_CONFIG?.API_BASE || 'http://127.0.0.1:18787',
   AUTH_TOKEN: window.RUNTIME_CONFIG?.AUTH_TOKEN || 'edt-local-dev-token',
-  RECONNECT_INTERVAL: 3000,
+  RECONNECT_BASE_INTERVAL: 1000,
+  RECONNECT_MAX_INTERVAL: 30000,
   MAX_REPLAY_DAYS: 7,
 };
 
@@ -24,6 +25,8 @@ const STATE = {
   sectorsByTrace: {},
   opportunitiesByTrace: {},
   traceOrder: [],
+  reconnectAttempt: 0,
+  reconnectTimer: null,
 };
 
 function escapeHtml(value) {
@@ -125,7 +128,32 @@ function init() {
   renderTimeline();
 }
 
+function clearReconnectTimer() {
+  if (STATE.reconnectTimer) {
+    clearTimeout(STATE.reconnectTimer);
+    STATE.reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (STATE.reconnectTimer) {
+    return;
+  }
+  const baseDelay = CONFIG.RECONNECT_BASE_INTERVAL;
+  const maxDelay = CONFIG.RECONNECT_MAX_INTERVAL;
+  const backoffDelay = Math.min(maxDelay, baseDelay * (2 ** STATE.reconnectAttempt));
+  const jitter = Math.floor(backoffDelay * 0.2 * Math.random());
+  const delay = backoffDelay + jitter;
+  STATE.reconnectAttempt += 1;
+  STATE.reconnectTimer = setTimeout(() => {
+    STATE.reconnectTimer = null;
+    connectWebSocket();
+  }, delay);
+  console.log(`WebSocket reconnect scheduled in ${delay}ms`);
+}
+
 function connectWebSocket() {
+  clearReconnectTimer();
   updateConnectionStatus('connecting');
   
   try {
@@ -133,6 +161,8 @@ function connectWebSocket() {
     
     STATE.ws.onopen = () => {
       STATE.connected = true;
+      STATE.reconnectAttempt = 0;
+      clearReconnectTimer();
       updateConnectionStatus('connected');
       STATE.ws.send(JSON.stringify({ type: 'subscribe', types: ['event_update', 'sector_update', 'opportunity_update'] }));
       // Load recent history so refresh doesn't show empty panels.
@@ -152,7 +182,7 @@ function connectWebSocket() {
     STATE.ws.onclose = () => {
       STATE.connected = false;
       updateConnectionStatus('disconnected');
-      setTimeout(connectWebSocket, CONFIG.RECONNECT_INTERVAL);
+      scheduleReconnect();
     };
     
     STATE.ws.onerror = (error) => {
@@ -162,7 +192,7 @@ function connectWebSocket() {
   } catch (e) {
     console.error('Failed to create WebSocket:', e);
     updateConnectionStatus('error');
-    setTimeout(connectWebSocket, CONFIG.RECONNECT_INTERVAL);
+    scheduleReconnect();
   }
 }
 

@@ -16,6 +16,15 @@ def _default_config_path() -> str:
     return str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class LiquidityChecker(EDTModule):
     """Check liquidity state (GREEN / YELLOW / RED)."""
 
@@ -27,18 +36,20 @@ class LiquidityChecker(EDTModule):
         for key in required:
             if key not in input_data:
                 return False, f"Missing required field: {key}"
-        if not (-1 <= float(input_data["correlation"]) <= 1):
+        correlation = _safe_float(input_data["correlation"], 0.0)
+        spread_pct = _safe_float(input_data["spread_pct"], 0.0)
+        if not (-1 <= correlation <= 1):
             return False, "correlation must be in [-1,1]"
-        if float(input_data["spread_pct"]) < 0:
+        if spread_pct < 0:
             return False, "spread_pct must be >=0"
         return True, None
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
-        vix = float(raw["vix"])
-        ted = float(raw["ted"])
-        corr = float(raw["correlation"])
-        spread_pct = float(raw["spread_pct"])
+        vix = _safe_float(raw.get("vix"), 0.0)
+        ted = _safe_float(raw.get("ted"), 0.0)
+        corr = _safe_float(raw.get("correlation"), 0.0)
+        spread_pct = _safe_float(raw.get("spread_pct"), 0.0)
 
         thresholds = self._get_config("modules.LiquidityChecker.params.thresholds", {})
         micro = self._get_config("modules.LiquidityChecker.params.micro_thresholds", {})

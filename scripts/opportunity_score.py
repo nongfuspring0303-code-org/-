@@ -38,7 +38,7 @@ class PremiumStock:
     market_cap_billion: float
     liquidity_score: float
     last_price: float
-    price_source: str = "static_reference"
+    price_source: str = "reference_snapshot"
 
 
 class PremiumStockPool:
@@ -49,7 +49,7 @@ class PremiumStockPool:
         self._cfg = self._load_yaml(self.pool_config_path)
         self.filters = self._cfg.get("filters", {})
         self.rules = self._cfg.get("opportunity_rules", {})
-        self.price_source = str(self._cfg.get("price_source", "static_reference"))
+        self.price_source = str(self._cfg.get("price_source", "reference_snapshot"))
         self._stocks_by_symbol = self._build_stock_index(self._cfg.get("stocks", []))
 
     @staticmethod

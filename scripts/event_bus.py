@@ -5,9 +5,11 @@ C-4: 消息按trace_id有序，断线自动重连，支持重放
 
 import asyncio
 import json
+import os
 import uuid
 import logging
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 from typing import Dict, List, Callable, Optional, Any
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -16,6 +18,7 @@ from websockets.server import WebSocketServerProtocol
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+DEFAULT_WS_TOKEN = os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")
 
 
 @dataclass
@@ -51,9 +54,10 @@ class EventMessage:
 class EventBus:
     """EDT 事件总线"""
     
-    def __init__(self, host: str = "localhost", port: int = 8765):
+    def __init__(self, host: str = "localhost", port: int = 8765, auth_token: Optional[str] = None):
         self.host = host
         self.port = port
+        self.auth_token = auth_token if auth_token is not None else DEFAULT_WS_TOKEN
         self.server = None
         self.clients: Dict[str, WebSocketServerProtocol] = {}
         self.subscriptions: Dict[str, List[str]] = defaultdict(list)
@@ -83,6 +87,11 @@ class EventBus:
     
     async def _handle_client(self, websocket: WebSocketServerProtocol, path: str = ""):
         """处理客户端连接"""
+        if not self._is_authorized_path(path):
+            await websocket.close(code=4401, reason="Unauthorized")
+            logger.warning("Rejected unauthorized websocket connection")
+            return
+
         client_id = str(uuid.uuid4())
         self.clients[client_id] = websocket
         logger.info(f"Client connected: {client_id}")
@@ -105,6 +114,13 @@ class EventBus:
             if client_id in self.clients:
                 del self.clients[client_id]
             self._cleanup_subscriptions(client_id)
+
+    def _is_authorized_path(self, path: str) -> bool:
+        if not self.auth_token:
+            return True
+        parsed = urlparse(path or "")
+        token = parse_qs(parsed.query).get("token", [""])[0]
+        return token == self.auth_token
     
     async def _process_message(self, client_id: str, message: str):
         """处理接收到的消息"""
@@ -315,12 +331,20 @@ class EventBus:
 class EventBusClient:
     """事件总线客户端"""
     
-    def __init__(self, url: str = "ws://localhost:8765"):
-        self.url = url
+    def __init__(self, url: str = "ws://localhost:8765", auth_token: Optional[str] = None):
+        self.base_url = url
+        self.auth_token = auth_token if auth_token is not None else DEFAULT_WS_TOKEN
+        self.url = self._build_url()
         self.ws = None
         self.client_id = None
         self.handlers: Dict[str, List[Callable]] = defaultdict(list)
         self._running = False
+
+    def _build_url(self) -> str:
+        if not self.auth_token:
+            return self.base_url
+        separator = "&" if "?" in self.base_url else "?"
+        return f"{self.base_url}{separator}token={self.auth_token}"
     
     async def connect(self):
         """连接事件总线"""

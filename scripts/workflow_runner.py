@@ -6,6 +6,7 @@ Chain: SignalScorer -> LiquidityChecker -> RiskGatekeeper -> PositionSizer -> Ex
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -22,6 +23,14 @@ from ai_signal_adapter import AISignalAdapter
 from signal_scorer import SignalScorer
 from execution_adapter import ExecutionAdapter
 from execution_modules import ExitManager, LiquidityChecker, PositionSizer, RiskGatekeeper
+
+
+def _stable_trace_id(payload: Dict[str, Any], request_id: str | None) -> str:
+    if request_id:
+        return str(request_id)
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    digest = hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:16].upper()
+    return f"TRC-{digest}"
 
 
 class WorkflowRunner:
@@ -195,6 +204,7 @@ class WorkflowRunner:
     @contextmanager
     def _request_file_lock(self):
         lock_path = str(self._request_lock_path)
+        self._request_lock_path.parent.mkdir(parents=True, exist_ok=True)
         for _ in range(200):
             try:
                 fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -282,10 +292,24 @@ class WorkflowRunner:
         return "neutral", False
 
     def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"input": payload, "steps": []}
         request_id = payload.get("request_id")
+        trace_id = _stable_trace_id(payload, request_id)
+        batch_id = payload.get("batch_id")
+        result: Dict[str, Any] = {
+            "input": payload,
+            "steps": [],
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
+        }
         if self._is_request_processed(request_id):
-            result["final"] = {"action": "DUPLICATE_IGNORED", "reason": f"request_id={request_id} already processed"}
+            result["final"] = {
+                "action": "DUPLICATE_IGNORED",
+                "reason": f"request_id={request_id} already processed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
 
         ai_factors = self._resolve_ai_factors(payload)
@@ -310,7 +334,13 @@ class WorkflowRunner:
         score_out = self._run_with_retry(self.scorer, score_in)
         result["steps"].append(self._pack_step("signal", score_out))
         if score_out.status != ModuleStatus.SUCCESS:
-            result["final"] = {"action": "ERROR", "reason": "SignalScorer failed"}
+            result["final"] = {
+                "action": "ERROR",
+                "reason": "SignalScorer failed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
         result["signal"] = score_out.data
         score = score_out.data["score"]
@@ -324,7 +354,13 @@ class WorkflowRunner:
         liq_out = self._run_with_retry(self.liquidity, liq_in)
         result["steps"].append(self._pack_step("liquidity", liq_out))
         if liq_out.status != ModuleStatus.SUCCESS:
-            result["final"] = {"action": "ERROR", "reason": "LiquidityChecker failed"}
+            result["final"] = {
+                "action": "ERROR",
+                "reason": "LiquidityChecker failed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
         result["liquidity"] = liq_out.data
 
@@ -350,7 +386,13 @@ class WorkflowRunner:
         gate_out = self._run_with_retry(self.gatekeeper, gate_in)
         result["steps"].append(self._pack_step("risk", gate_out))
         if gate_out.status != ModuleStatus.SUCCESS:
-            result["final"] = {"action": "ERROR", "reason": "RiskGatekeeper failed"}
+            result["final"] = {
+                "action": "ERROR",
+                "reason": "RiskGatekeeper failed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
         result["risk"] = gate_out.data
 
@@ -358,6 +400,9 @@ class WorkflowRunner:
             result["final"] = {
                 "action": gate_out.data["final_action"],
                 "reason": "Blocked by gates or no valid position.",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
             }
             self._mark_request_processed(request_id)
             return result
@@ -371,6 +416,9 @@ class WorkflowRunner:
             result["final"] = {
                 "action": "PENDING_CONFIRM",
                 "reason": "Human confirmation required before execution.",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
             }
             result["human_confirm"] = {
                 "required": True,
@@ -387,7 +435,13 @@ class WorkflowRunner:
         size_out = self._run_with_retry(self.sizer, size_in)
         result["steps"].append(self._pack_step("position", size_out))
         if size_out.status != ModuleStatus.SUCCESS:
-            result["final"] = {"action": "ERROR", "reason": "PositionSizer failed"}
+            result["final"] = {
+                "action": "ERROR",
+                "reason": "PositionSizer failed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
         result["position"] = size_out.data
 
@@ -395,6 +449,9 @@ class WorkflowRunner:
             result["final"] = {
                 "action": "WATCH",
                 "reason": "Final position notional is 0 after risk/position checks.",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
             }
             self._mark_request_processed(request_id)
             return result
@@ -411,7 +468,13 @@ class WorkflowRunner:
         exit_out = self._run_with_retry(self.exit_mgr, exit_in)
         result["steps"].append(self._pack_step("exit_plan", exit_out))
         if exit_out.status != ModuleStatus.SUCCESS:
-            result["final"] = {"action": "ERROR", "reason": "ExitManager failed"}
+            result["final"] = {
+                "action": "ERROR",
+                "reason": "ExitManager failed",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+            }
             return result
         result["exit_plan"] = exit_out.data
 
@@ -424,6 +487,8 @@ class WorkflowRunner:
             "stop_loss": exit_out.data["hard_stop"],
             "take_profit_levels": exit_out.data["take_profit_levels"],
             "request_id": request_id,
+            "trace_id": trace_id,
+            "batch_id": payload.get("batch_id"),
         }
         execution_receipt = self.executor.execute(order)
 
@@ -435,6 +500,9 @@ class WorkflowRunner:
             "liquidity_state": liq_out.data["liquidity_state"],
             "execution_ticket": execution_receipt["ticket_id"],
             "execution_mode": execution_receipt["mode"],
+            "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
         }
         result["human_confirm"] = {
             "required": require_human_confirm,
@@ -455,6 +523,7 @@ class WorkflowRunner:
             "mapping_version": ai_factors.get("mapping_version", "factor_map_v1"),
             "narrative_state": ai_factors.get("narrative_state"),
         }
+        result["batch_id"] = batch_id
         self._mark_request_processed(request_id)
         return result
 

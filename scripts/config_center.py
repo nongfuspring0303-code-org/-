@@ -6,7 +6,7 @@ Config center loader (T1.3).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -14,7 +14,7 @@ import yaml
 class ConfigCenter:
     """Load and provide typed access to module configs."""
 
-    def __init__(self, config_path: str | None = None):
+    def __init__(self, config_path: Optional[str] = None):
         base = Path(__file__).resolve().parent.parent
         self.config_path = Path(config_path) if config_path else base / "configs" / "edt-modules-config.yaml"
         self.data = self._load()
@@ -56,4 +56,3 @@ if __name__ == "__main__":
     print("required_modules_ok:", ok)
     if not ok:
         print("missing:", missing)
-

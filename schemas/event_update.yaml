@@ -4,6 +4,8 @@ description: EDT新闻事件输入格式 - 从新闻源输入
 type: object
 required:
   - type
+  - trace_id
+  - schema_version
   - headline
   - source
   - timestamp
@@ -14,12 +16,25 @@ properties:
     description: 消息类型标识
   trace_id:
     type: string
-    pattern: "^evt_[a-zA-Z0-9]{16}$"
-    description: 事件追踪ID，由C模块事件总线统一生成
+    minLength: 8
+    anyOf:
+      - pattern: "^TRC-[A-Za-z0-9_-]+$"
+      - pattern: "^REQ-[A-Za-z0-9_-]+$"
+      - pattern: "^BATCH-[A-Za-z0-9_-]+$"
+      - pattern: "^evt_[A-Za-z0-9_-]+$"
+    description: 事件追踪ID，由统一仲裁与事件总线贯穿生成
   schema_version:
     type: string
     const: v1.0
     description: Schema版本号
+  request_id:
+    type: string
+    minLength: 1
+    description: 请求级幂等ID
+  batch_id:
+    type: string
+    minLength: 1
+    description: 批次级追踪ID
   headline:
     type: string
     description: 新闻标题

@@ -15,4 +15,4 @@ def test_data_adapter_fetch():
     assert "vix_level" in data["market_data"]
     assert "sector_data" in data
     assert isinstance(data["sector_data"], list)
-
+    assert data["market_data"].get("is_test_data") is True

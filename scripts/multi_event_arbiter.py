@@ -50,6 +50,12 @@ class MultiEventArbiter:
         return f"{headline}|{normalized_source}"
 
     @staticmethod
+    def _batch_fingerprint(events: List[Dict[str, Any]]) -> str:
+        keys = sorted(MultiEventArbiter._event_key(event) for event in events)
+        digest = hashlib.sha1(json.dumps(keys, ensure_ascii=False).encode("utf-8")).hexdigest()[:12].upper()
+        return f"BATCH-{digest}"
+
+    @staticmethod
     def _severity_weight(event: Dict[str, Any]) -> int:
         sev = event.get("severity")
         mapping = {"E4": 5, "E3": 4, "E2": 3, "E1": 2, "E0": 1}
@@ -103,6 +109,7 @@ class MultiEventArbiter:
     def run_batch(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         prioritized = self._prioritize(events)
         deduped, dropped_dedup = self._dedup_events(prioritized)
+        batch_id = self._batch_fingerprint(prioritized)
 
         results = []
         symbol_inflight = set()
@@ -148,6 +155,7 @@ class MultiEventArbiter:
             results.append(
                 {
                     "request_id": request_id,
+                    "batch_id": batch_id,
                     "symbol": symbol,
                     "status": "DONE",
                     "final_action": action,
@@ -162,6 +170,7 @@ class MultiEventArbiter:
             "dropped_dedup": dropped_dedup,
             "dropped_conflict": dropped_conflict,
             "executed": accepted_count,
+            "batch_id": batch_id,
             "results": results,
         }
 
@@ -202,4 +211,3 @@ if __name__ == "__main__":
     ]
     out = MultiEventArbiter().run_batch(sample)
     print(json.dumps(out, indent=2, ensure_ascii=False))
-

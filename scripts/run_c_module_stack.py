@@ -85,9 +85,14 @@ def build_mock_event(trace_id: str):
     ]
 
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    request_id = f"REQ-{trace_id}"
+    batch_id = f"BATCH-{trace_id}"
     return {
         "event_update": {
+            "type": "event_update",
             "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
             "schema_version": "v1.0",
             "headline": random.choice(headlines),
             "source": "MockFeed",
@@ -95,7 +100,10 @@ def build_mock_event(trace_id: str):
             "timestamp": now,
         },
         "sector_update": {
+            "type": "sector_update",
             "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
             "schema_version": "v1.0",
             "sectors": sectors,
             "conduction_chain": [
@@ -106,7 +114,10 @@ def build_mock_event(trace_id: str):
             "timestamp": now,
         },
         "opportunity_update": {
+            "type": "opportunity_update",
             "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
             "schema_version": "v1.0",
             "opportunities": opportunities,
             "timestamp": now,

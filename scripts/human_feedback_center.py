@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import json
 
 import yaml
@@ -31,7 +31,7 @@ class FeedbackRecord:
 
 
 class HumanFeedbackCenter:
-    def __init__(self, base_dir: str | None = None):
+    def __init__(self, base_dir: Optional[str] = None):
         root = Path(base_dir) if base_dir else Path(__file__).resolve().parent.parent
         self.root = root
         self.config_dir = root / "configs"
@@ -84,7 +84,7 @@ class HumanFeedbackCenter:
             "record": asdict(record),
         }
 
-    def list_feedback(self, target_module: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    def list_feedback(self, target_module: Optional[str] = None, limit: int = 200) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         if not self.feedback_file.exists():
             return rows

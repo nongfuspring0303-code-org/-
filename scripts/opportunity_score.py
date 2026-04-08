@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -38,16 +38,18 @@ class PremiumStock:
     market_cap_billion: float
     liquidity_score: float
     last_price: float
+    price_source: str = "static_reference"
 
 
 class PremiumStockPool:
     """Loads and filters configurable premium stock pool."""
 
-    def __init__(self, pool_config_path: str | None = None):
+    def __init__(self, pool_config_path: Optional[str] = None):
         self.pool_config_path = Path(pool_config_path) if pool_config_path else _root_dir() / "configs" / "premium_stock_pool.yaml"
         self._cfg = self._load_yaml(self.pool_config_path)
         self.filters = self._cfg.get("filters", {})
         self.rules = self._cfg.get("opportunity_rules", {})
+        self.price_source = str(self._cfg.get("price_source", "static_reference"))
         self._stocks_by_symbol = self._build_stock_index(self._cfg.get("stocks", []))
 
     @staticmethod
@@ -76,6 +78,7 @@ class PremiumStockPool:
                 market_cap_billion=self._to_float(item.get("market_cap_billion", 0)),
                 liquidity_score=self._to_float(item.get("liquidity_score", 0)),
                 last_price=self._to_float(item.get("last_price", 100.0), 100.0),
+                price_source=str(item.get("price_source", self.price_source)),
             )
         return out
 
@@ -85,10 +88,10 @@ class PremiumStockPool:
         liq_min = self._to_float(self.filters.get("liquidity_score_min", 0.60), 0.60)
         return stock.roe > roe_min and stock.market_cap_billion > mkt_cap_min and stock.liquidity_score > liq_min
 
-    def get_stock(self, symbol: str) -> PremiumStock | None:
+    def get_stock(self, symbol: str) -> Optional[PremiumStock]:
         return self._stocks_by_symbol.get(str(symbol).strip().upper())
 
-    def pick_by_sector(self, sector_name: str, limit: int | None = None) -> List[PremiumStock]:
+    def pick_by_sector(self, sector_name: str, limit: Optional[int] = None) -> List[PremiumStock]:
         norm = _norm_sector(sector_name)
         selected = [s for s in self._stocks_by_symbol.values() if _norm_sector(s.sector) == norm and self._pass_thresholds(s)]
         selected.sort(key=lambda x: (x.liquidity_score, x.market_cap_billion), reverse=True)
@@ -111,7 +114,7 @@ class PremiumStockPool:
 class OpportunityScorer:
     """Builds opportunity_update payload with completed opportunity-card fields."""
 
-    def __init__(self, pool_config_path: str | None = None):
+    def __init__(self, pool_config_path: Optional[str] = None):
         self.pool = PremiumStockPool(pool_config_path=pool_config_path)
 
     @staticmethod
@@ -227,6 +230,8 @@ class OpportunityScorer:
             "sector": sector_name,
             "signal": target_signal,
             "entry_zone": self._build_entry_zone(stock.last_price),
+            "price_source": stock.price_source,
+            "needs_price_refresh": stock.price_source != "live",
             "risk_flags": risk_flags,
             "final_action": final_action,
             "reasoning": reasoning,

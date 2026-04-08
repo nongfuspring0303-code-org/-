@@ -75,6 +75,7 @@ registry:
     dependencies: [EventObjectifier, Logger]
     config: edt-modules-config.yaml
     test_case: tests/test_conduction_mapper.yaml
+    acceptance_case: tests/test_conduction_mapping_config.py
     
   - name: MarketValidator
     version: 1.0.0
@@ -105,6 +106,7 @@ registry:
     dependencies: [ConductionMapper, MarketValidator, SignalScorer]
     config: premium_stock_pool.yaml
     test_case: tests/test_opportunity_score.py
+    pressure_gate: scripts/run_phase3_pressure_gate.py
 
   - name: NarrativeStateRecognizer
     version: 1.0.0
@@ -208,6 +210,7 @@ registry:
     dependencies: [Logger, RetryHandler]
     config: edt-modules-config.yaml
     test_case: tests/test_ai_event_intel.py
+    pressure_gate: scripts/run_phase3_pressure_gate.py
 
   - name: EventEvidenceScorer
     version: 1.0.0
@@ -218,6 +221,7 @@ registry:
     dependencies: [NewsIngestion, Logger]
     config: edt-modules-config.yaml
     test_case: tests/test_ai_event_intel.py
+    acceptance_case: tests/test_ai_event_intel.py
 
 # 模块调用关系图
 dependencies_graph:

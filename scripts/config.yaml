@@ -14,6 +14,7 @@ checks:
       - "configs/edt-modules-config.yaml"
       - "configs/sector_impact_mapping.yaml"
       - "configs/premium_stock_pool.yaml"
+      - "scripts/run_phase3_pressure_gate.py"
       - "阶段三任务分工说明.md"
       - "module-registry.yaml"
   

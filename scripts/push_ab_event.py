@@ -25,9 +25,14 @@ def post(url: str, payload: dict):
 
 def build_payload(kind: str, trace_id: str):
     now = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    request_id = f"REQ-{trace_id}"
+    batch_id = f"BATCH-{trace_id}"
     if kind == "event-update":
         return {
+            "type": "event_update",
             "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
             "schema_version": "v1.0",
             "headline": "A 模块联调事件",
             "source": "A-Module",
@@ -36,7 +41,10 @@ def build_payload(kind: str, trace_id: str):
         }
     if kind == "sector-update":
         return {
+            "type": "sector_update",
             "trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
             "schema_version": "v1.0",
             "sectors": [
                 {"name": "科技", "direction": "LONG", "impact_score": 0.83, "confidence": 0.9},
@@ -50,7 +58,10 @@ def build_payload(kind: str, trace_id: str):
             "timestamp": now,
         }
     return {
+        "type": "opportunity_update",
         "trace_id": trace_id,
+        "request_id": request_id,
+        "batch_id": batch_id,
         "schema_version": "v1.0",
         "opportunities": [
             {

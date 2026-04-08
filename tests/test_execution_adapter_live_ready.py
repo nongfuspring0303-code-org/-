@@ -1,4 +1,6 @@
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,6 +37,24 @@ def test_execution_adapter_blocks_duplicate_request_id(tmp_path):
     assert second["status"] == "duplicate_ignored"
 
 
+def test_execution_adapter_blocks_concurrent_duplicate_request_id(tmp_path, monkeypatch):
+    adapter = ExecutionAdapter(mode="paper", audit_dir=str(tmp_path))
+    original_place_order = adapter.broker.place_order
+
+    def slow_place_order(order):
+        time.sleep(0.2)
+        return original_place_order(order)
+
+    monkeypatch.setattr(adapter.broker, "place_order", slow_place_order)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(adapter.execute, _base_order("REQ-CONCURRENT-1")) for _ in range(2)]
+        results = [future.result() for future in futures]
+
+    statuses = sorted(result["status"] for result in results)
+    assert statuses == ["accepted", "duplicate_ignored"]
+
+
 def test_execution_adapter_blocks_by_risk_limit(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
@@ -55,6 +75,15 @@ modules:
     out = adapter.execute(_base_order("REQ-RISK-1"))
     assert out["status"] == "blocked_by_risk"
     assert "max_notional_per_order" in out["reason"]
+
+
+def test_execution_adapter_rejects_non_finite_numeric_fields(tmp_path):
+    adapter = ExecutionAdapter(mode="paper", audit_dir=str(tmp_path))
+    order = _base_order("REQ-NAN-1")
+    order["notional"] = float("nan")
+    out = adapter.execute(order)
+    assert out["status"] == "blocked_by_risk"
+    assert "finite" in out["reason"]
 
 
 def test_execution_adapter_live_mode_uses_stub(tmp_path):

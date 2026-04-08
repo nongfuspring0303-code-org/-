@@ -62,3 +62,13 @@ def test_multi_event_dedup_normalizes_case_and_trailing_slash():
     assert out["processed"] == 1
     assert out["dropped_dedup"] == 1
 
+
+def test_multi_event_batch_id_is_stable():
+    arb = MultiEventArbiter()
+    events = [
+        _event("Fed action", "https://www.reuters.com/a1", "XLF", 30),
+        _event("Macro surprise", "https://www.reuters.com/a3", "XLI", 24),
+    ]
+    first = arb.run_batch(events)
+    second = arb.run_batch(events)
+    assert first["batch_id"] == second["batch_id"]

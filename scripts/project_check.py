@@ -11,9 +11,17 @@ python3 scripts/project_check.py --report  # 生成报告
 import os
 import sys
 import json
+import tempfile
 import yaml
 from pathlib import Path
 from datetime import datetime
+
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from phase3_evidence_ledger import Phase3EvidenceLedger
 
 
 def check_project():
@@ -106,6 +114,73 @@ def check_project():
         else:
             print(f"  ❌ {desc} (文件缺失)")
             issues.append(f"C模块文件缺失: {desc}")
+
+    # 4.5 检查真实压力门禁
+    print("\n⚙️  真实压力门禁检查:")
+    pressure_gate = root / "scripts" / "run_phase3_pressure_gate.py"
+    if pressure_gate.exists():
+        sample = [
+            {
+                "headline": "Fed signals policy shift",
+                "source_url": "https://example.com/news-1",
+                "raw_text": "policy shift",
+                "source_type": "rss",
+                "timestamp": "2026-04-09T01:02:03Z",
+            },
+            {
+                "headline": "AI spending remains strong",
+                "source_url": "https://example.com/news-2",
+                "raw_text": "ai spending",
+                "source_type": "official",
+                "timestamp": "2026-04-09T01:02:03Z",
+            },
+        ]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+            json.dump(sample, handle, ensure_ascii=False)
+            sample_path = Path(handle.name)
+        try:
+            import subprocess
+
+            cmd = [
+                sys.executable,
+                str(pressure_gate),
+                "--input-json",
+                str(sample_path),
+                "--min-board-coverage",
+                "0.5",
+                "--max-p99-ms",
+                "5000",
+                "--min-throughput",
+                "0.1",
+            ]
+            proc = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if proc.returncode == 0:
+                print("  ✅ 真实压力门禁")
+            else:
+                print("  ❌ 真实压力门禁 (失败)")
+                issues.append("真实压力门禁失败")
+                tail = (proc.stdout or proc.stderr or "").strip().splitlines()
+                if tail:
+                    print(f"    {tail[-1][:120]}")
+        finally:
+            try:
+                sample_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    else:
+        print("  ❌ 真实压力门禁 (脚本缺失)")
+        issues.append("真实压力门禁脚本缺失")
+
+    print("\n📚 证据台账检查:")
+    ledger = Phase3EvidenceLedger(str(root / "logs"))
+    summary = ledger.read_summary()
+    total_runs = int(summary.get("total_runs", 0) or 0)
+    live_run_count = int(summary.get("live_run_count", 0) or 0)
+    if total_runs > 0:
+        print(f"  ✅ 证据台账 ({total_runs} 条，live={live_run_count})")
+    else:
+        print("  ⚠️  证据台账为空")
+        issues.append("证据台账为空")
     
     # 5. 检查测试
     print("\n🧪 测试检查:")

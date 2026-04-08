@@ -112,11 +112,14 @@ class DataAdapter:
         }
 
     def fetch_market_data(self) -> Dict[str, Any]:
+        # Explicitly mark market data as unavailable unless a real adapter is wired in.
         return {
-            "vix_level": 35,
-            "vix_change_pct": 45,
-            "spx_change_pct": -2.8,
-            "etf_volatility": {"change_pct": 3.2}
+            "vix_level": None,
+            "vix_change_pct": None,
+            "spx_change_pct": None,
+            "etf_volatility": {"change_pct": None},
+            "market_data_source": "unavailable",
+            "is_test_data": True,
         }
 
     def fetch_sector_data(self) -> List[Dict[str, Any]]:

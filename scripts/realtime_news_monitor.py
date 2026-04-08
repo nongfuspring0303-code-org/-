@@ -12,6 +12,7 @@ Real-time News Monitor for EDT Project
 
 import argparse
 import json
+import os
 import logging
 import sys
 import time
@@ -92,10 +93,19 @@ class RealtimeNewsMonitor:
         except Exception as e:
             logger.warning(f"⚠️ 翻译失败: {e}")
             return None
+
+    def _c_ingest_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "X-EDT-Token": os.getenv("EDT_API_TOKEN", os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")),
+        }
     
     def _process_news(self, news: Dict[str, Any]) -> bool:
         """处理单条新闻，返回是否触发成功"""
         if not self.event_capture:
+            return False
+        if news.get("metadata", {}).get("is_test_data"):
+            logger.warning("⚠️ 跳过测试数据，避免把fallback误当真实新闻触发")
             return False
         
         try:
@@ -125,15 +135,24 @@ class RealtimeNewsMonitor:
         
         try:
             logger.info("🔄 触发A/B计算...")
+            market = self.data_adapter.fetch_market_data() if self.data_adapter else {}
+
+            def _num_or_default(value, default=0):
+                try:
+                    if value is None:
+                        return default
+                    return float(value)
+                except (TypeError, ValueError):
+                    return default
             
             payload = {
                 "headline": news.get("headline"),
                 "source": news.get("source_url"),
                 "timestamp": news.get("timestamp"),
-                "vix": news.get("metadata", {}).get("vix_level", 20),
-                "vix_change_pct": 0,
-                "spx_move_pct": 0,
-                "sector_move_pct": 0,
+                "vix": _num_or_default(market.get("vix_level"), 20),
+                "vix_change_pct": _num_or_default(market.get("vix_change_pct"), 0),
+                "spx_move_pct": _num_or_default(market.get("spx_change_pct"), 0),
+                "sector_move_pct": _num_or_default(market.get("etf_volatility", {}).get("change_pct"), 0),
                 "sequence": 1,
             }
             
@@ -164,7 +183,9 @@ class RealtimeNewsMonitor:
             intel = result.get("intel", {})
             event_object = intel.get("event_object", {})
             ts = datetime.now(timezone.utc).isoformat()
-            trace_id = event_object.get("event_id", "unknown")
+            trace_id = str(result.get("trace_id") or event_object.get("event_id", "unknown"))
+            request_id = str(result.get("request_id") or trace_id)
+            batch_id = str(result.get("batch_id") or f"BATCH-{request_id}")
             
             sectors = []
             for item in analysis.get("conduction", {}).get("sector_impacts", []):
@@ -185,6 +206,8 @@ class RealtimeNewsMonitor:
             
             data = {
                 "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
                 "schema_version": "v1.0",
                 "sectors": sectors,
                 "conduction_chain": [],
@@ -198,7 +221,7 @@ class RealtimeNewsMonitor:
             req = urllib.request.Request(
                 endpoint,
                 data=json.dumps(data).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=self._c_ingest_headers(),
                 method="POST"
             )
             
@@ -211,6 +234,8 @@ class RealtimeNewsMonitor:
             headline_cn = event_object.get("headline_cn") or self._translate_headline(headline)
             event_data = {
                 "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
                 "schema_version": "v1.0",
                 "headline": headline,
                 "headline_cn": headline_cn,
@@ -225,7 +250,7 @@ class RealtimeNewsMonitor:
             req = urllib.request.Request(
                 endpoint,
                 data=json.dumps(event_data).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=self._c_ingest_headers(),
                 method="POST"
             )
             
@@ -238,6 +263,8 @@ class RealtimeNewsMonitor:
             if opportunities:
                 opp_data = {
                     "trace_id": trace_id,
+                    "request_id": request_id,
+                    "batch_id": batch_id,
                     "schema_version": "v1.0",
                     "opportunities": opportunities,
                     "timestamp": ts,
@@ -247,7 +274,7 @@ class RealtimeNewsMonitor:
                 req = urllib.request.Request(
                     endpoint,
                     data=json.dumps(opp_data).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
+                    headers=self._c_ingest_headers(),
                     method="POST"
                 )
                 
@@ -267,7 +294,7 @@ class RealtimeNewsMonitor:
             req = urllib.request.Request(
                 endpoint,
                 data=json.dumps(data).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=self._c_ingest_headers(),
                 method="POST"
             )
             

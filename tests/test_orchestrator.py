@@ -79,3 +79,14 @@ def test_orchestrator_circuit_opens(monkeypatch):
     assert first.data["status"] == "FALLBACK"
     assert second.data["status"] == "FALLBACK"
     assert third.data["status"] == "CIRCUIT_OPEN"
+
+
+def test_orchestrator_trace_id_is_stable_for_same_payload(monkeypatch):
+    node = OrchestratorNode()
+    monkeypatch.setattr(node, "_get_module", lambda node_type: _SuccessModule())
+
+    payload = {"node_type": "ai_event_intel", "payload": {"headline": "Fed action", "vix": 30}}
+    first = node.run(dict(payload))
+    second = node.run(dict(payload))
+
+    assert first.data["trace_id"] == second.data["trace_id"]

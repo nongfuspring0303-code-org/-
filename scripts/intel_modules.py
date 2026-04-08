@@ -24,6 +24,28 @@ def _host_matches_domain(host: str, domain: str) -> bool:
     return normalized_host == normalized_domain or normalized_host.endswith(f".{normalized_domain}")
 
 
+def _keyword_matches(text: str, keyword: str) -> bool:
+    """Match a configured keyword as a token or phrase, not a loose substring."""
+    needle = keyword.strip().lower()
+    haystack = text.lower()
+    if not needle:
+        return False
+    if " " in needle or any(ord(ch) > 127 for ch in needle):
+        return needle in haystack
+    tokens = set()
+    current = []
+    for ch in haystack:
+        if ch.isalnum():
+            current.append(ch)
+        else:
+            if current:
+                tokens.add("".join(current))
+                current = []
+    if current:
+        tokens.add("".join(current))
+    return needle in tokens
+
+
 class EventCapture(EDTModule):
     """Capture raw event and provide first-pass category."""
 
@@ -43,7 +65,7 @@ class EventCapture(EDTModule):
         keywords = [k.lower() for k in self._get_config("modules.EventCapture.params.keywords", [])]
         
         # 关键词匹配才触发，VIX仅作为放大器（不单独触发）
-        keyword_matched = any(k in headline for k in keywords)
+        keyword_matched = any(_keyword_matches(headline, k) for k in keywords)
         vix_level = float(raw.get("vix", 0))
         vix_amplify_threshold = float(self._get_config("modules.EventCapture.params.vix_amplify_threshold", 20))
         vix_amplify = vix_level >= vix_amplify_threshold
@@ -53,13 +75,13 @@ class EventCapture(EDTModule):
 
         # Minimal category inference for skeleton.
         category = "E"
-        if any(k in headline for k in ("tariff", "trade", "关税")):
+        if any(_keyword_matches(headline, k) for k in ("tariff", "trade war", "关税", "进口限制", "出口管制")):
             category = "C"
-        elif any(k in headline for k in ("war", "sanction", "地缘")):
+        elif any(_keyword_matches(headline, k) for k in ("war", "sanction", "地缘")):
             category = "D"
-        elif any(k in headline for k in ("virus", "疫情")):
+        elif any(_keyword_matches(headline, k) for k in ("virus", "疫情")):
             category = "B"
-        elif any(k in headline for k in ("fed", "rate", "policy", "fomc")):
+        elif any(_keyword_matches(headline, k) for k in ("fed", "rate", "policy", "fomc")):
             category = "E"
 
         return ModuleOutput(
@@ -72,7 +94,7 @@ class EventCapture(EDTModule):
                 "source": raw["source"],
                 "timestamp": raw["timestamp"],
                 "category_hint": category,
-                "matched_keywords": [k for k in keywords if k in headline],
+                "matched_keywords": [k for k in keywords if _keyword_matches(headline, k)],
             },
         )
 
@@ -230,4 +252,3 @@ if __name__ == "__main__":
     import json
 
     print(json.dumps(out, indent=2, ensure_ascii=False))
-

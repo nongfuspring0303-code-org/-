@@ -9,8 +9,10 @@ selection_rules:
 
 filters:
   roe_min: 15.0
-  market_cap_billion_min: 500.0
+  market_cap_billion_min: 50.0
   liquidity_score_min: 0.60
+
+price_source: reference_snapshot
 
 opportunity_rules:
   watch_score_threshold: 0.55

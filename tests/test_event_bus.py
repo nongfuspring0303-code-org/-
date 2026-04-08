@@ -62,6 +62,11 @@ class TestEventBus:
         assert bus.port == 8766
         assert len(bus.clients) == 0
         assert len(bus.subscriptions) == 0
+
+    def test_authorized_path(self):
+        bus = EventBus(host="localhost", port=8766, auth_token="secret-token")
+        assert bus._is_authorized_path("/?token=secret-token") is True
+        assert bus._is_authorized_path("/?token=wrong") is False
     
     def test_generate_trace_id(self, bus):
         trace_id = bus._generate_trace_id()
@@ -132,40 +137,44 @@ class TestEventBus:
 class TestEventBusIntegration:
     """集成测试"""
     
-    @pytest.mark.asyncio
-    async def test_message_flow(self):
-        bus = EventBus(host="127.0.0.1", port=8767)
-        
-        handler_called = False
-        
-        async def test_handler(data):
-            nonlocal handler_called
-            handler_called = True
-            return {"processed": True}
-        
-        bus.register_handler("test_flow", test_handler)
-        
-        await bus.publish("test_flow", {"data": "test"}, "evt_flow_test")
-        
-        assert handler_called
-        assert len(bus.message_history) == 1
-        
-        await bus.stop()
-    
-    @pytest.mark.asyncio
-    async def test_trace_id_consistency(self):
-        bus = EventBus(host="127.0.0.1", port=8768)
-        
-        trace_id = "evt_consistency_test"
-        
-        await bus.publish("event1", {"step": 1}, trace_id)
-        await bus.publish("event2", {"step": 2}, trace_id)
-        
-        messages = [m for m in bus.message_history if m.trace_id == trace_id]
-        
-        assert len(messages) == 2
-        
-        await bus.stop()
+    def test_message_flow(self):
+        async def run():
+            bus = EventBus(host="127.0.0.1", port=8767)
+
+            handler_called = False
+
+            async def test_handler(data):
+                nonlocal handler_called
+                handler_called = True
+                return {"processed": True}
+
+            bus.register_handler("test_flow", test_handler)
+
+            await bus.publish("test_flow", {"data": "test"}, "evt_flow_test")
+
+            assert handler_called
+            assert len(bus.message_history) == 1
+
+            await bus.stop()
+
+        asyncio.run(run())
+
+    def test_trace_id_consistency(self):
+        async def run():
+            bus = EventBus(host="127.0.0.1", port=8768)
+
+            trace_id = "evt_consistency_test"
+
+            await bus.publish("event1", {"step": 1}, trace_id)
+            await bus.publish("event2", {"step": 2}, trace_id)
+
+            messages = [m for m in bus.message_history if m.trace_id == trace_id]
+
+            assert len(messages) == 2
+
+            await bus.stop()
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

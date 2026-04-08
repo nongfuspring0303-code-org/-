@@ -6,6 +6,7 @@ Execution adapter with broker abstraction, risk gates, and state recovery.
 from __future__ import annotations
 
 import json
+import math
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -40,6 +41,8 @@ class ExecutionAdapter:
         self.audit_dir.mkdir(parents=True, exist_ok=True)
         self.audit_file = self.audit_dir / "execution_audit.jsonl"
         self._audit_lock = threading.Lock()
+        self._state_lock = threading.RLock()
+        self._inflight_request_ids: set[str] = set()
         self.state_file = self.audit_dir / "execution_state.json"
         self.config_path = Path(config_path) if config_path else Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml"
 
@@ -109,19 +112,31 @@ class ExecutionAdapter:
             self._state["processed_request_ids"] = []
             self._persist_state()
 
-    def _is_duplicate_request(self, request_id: Optional[str]) -> bool:
+    def _claim_request(self, request_id: Optional[str]) -> bool:
         if not request_id:
-            return False
-        return request_id in set(self._state.get("processed_request_ids", []))
+            return True
+        with self._state_lock:
+            processed = set(self._state.get("processed_request_ids", []))
+            if request_id in processed or request_id in self._inflight_request_ids:
+                return False
+            self._inflight_request_ids.add(request_id)
+            return True
+
+    def _release_request(self, request_id: Optional[str]) -> None:
+        if not request_id:
+            return
+        with self._state_lock:
+            self._inflight_request_ids.discard(request_id)
 
     def _mark_processed(self, request_id: Optional[str]) -> None:
         if not request_id:
             return
-        ids = self._state.setdefault("processed_request_ids", [])
-        if request_id not in ids:
-            ids.append(request_id)
-            if len(ids) > 5000:
-                del ids[: len(ids) - 5000]
+        with self._state_lock:
+            ids = self._state.setdefault("processed_request_ids", [])
+            if request_id not in ids:
+                ids.append(request_id)
+                if len(ids) > 5000:
+                    del ids[: len(ids) - 5000]
 
     def _risk_limits(self) -> Dict[str, Any]:
         return {
@@ -142,14 +157,36 @@ class ExecutionAdapter:
     def _validate_order(self, order: Dict[str, Any]) -> Optional[str]:
         symbol = str(order.get("symbol", "")).strip().upper()
         action = str(order.get("action", "")).strip().upper()
-        notional = float(order.get("notional", 0.0))
+        try:
+            notional = float(order.get("notional", 0.0))
+            entry_price = float(order.get("entry_price", 0.0))
+            stop_loss = float(order.get("stop_loss", 0.0))
+        except (TypeError, ValueError):
+            return "numeric order fields must be valid numbers"
 
         if not symbol:
             return "missing symbol"
         if action not in ("OPEN_LONG", "OPEN_SHORT", "CLOSE_LONG", "CLOSE_SHORT"):
             return f"unsupported action={action}"
+        if not all(math.isfinite(value) for value in (notional, entry_price, stop_loss)):
+            return "numeric order fields must be finite"
         if notional <= 0:
             return "notional must be > 0"
+        if entry_price <= 0:
+            return "entry_price must be > 0"
+        if stop_loss <= 0:
+            return "stop_loss must be > 0"
+
+        levels = order.get("take_profit_levels", [])
+        if not isinstance(levels, list) or not levels:
+            return "take_profit_levels must be a non-empty list"
+        for level in levels:
+            try:
+                level_value = float(level)
+            except (TypeError, ValueError):
+                return "take_profit_levels must contain valid numbers"
+            if not math.isfinite(level_value):
+                return "take_profit_levels must contain finite numbers"
 
         limits = self._risk_limits()
         if symbol in limits["blocked_symbols"]:
@@ -181,7 +218,7 @@ class ExecutionAdapter:
 
         ticket = f"EXE-{uuid.uuid4().hex[:10].upper()}"
         now = _now_iso()
-        request_id = order.get("request_id")
+        request_id = str(order.get("request_id")).strip() if order.get("request_id") is not None else None
 
         result: Dict[str, Any] = {
             "ticket_id": ticket,
@@ -197,42 +234,47 @@ class ExecutionAdapter:
             self._write_audit(result)
             return result
 
-        if self._is_duplicate_request(request_id):
+        if not self._claim_request(request_id):
             result["status"] = "duplicate_ignored"
             result["reason"] = f"request_id={request_id} already processed by execution adapter"
             self._write_audit(result)
             return result
 
-        risk_error = self._validate_order(order)
-        if risk_error:
-            result["status"] = "blocked_by_risk"
-            result["reason"] = risk_error
+        try:
+            risk_error = self._validate_order(order)
+            if risk_error:
+                result["status"] = "blocked_by_risk"
+                result["reason"] = risk_error
+                self._write_audit(result)
+                return result
+
+            broker_result = self.broker.place_order(order)
+            result["broker_result"] = broker_result
+
+            broker_status = str(broker_result.get("status", "unknown"))
+            result["status"] = broker_status
+            result["broker_order_id"] = broker_result.get("broker_order_id")
+
+            if broker_status == "accepted":
+                with self._state_lock:
+                    self._state["daily_notional"] = float(self._state.get("daily_notional", 0.0)) + float(order.get("notional", 0.0))
+                    self._state["open_orders"] = int(self._state.get("open_orders", 0)) + 1
+                    self._mark_processed(request_id)
+                    self._persist_state()
+            elif broker_status == "not_implemented":
+                result["reason"] = broker_result.get("reason", "live broker adapter not implemented yet")
+
             self._write_audit(result)
             return result
-
-        broker_result = self.broker.place_order(order)
-        result["broker_result"] = broker_result
-
-        broker_status = str(broker_result.get("status", "unknown"))
-        result["status"] = broker_status
-        result["broker_order_id"] = broker_result.get("broker_order_id")
-
-        if broker_status == "accepted":
-            self._state["daily_notional"] = float(self._state.get("daily_notional", 0.0)) + float(order.get("notional", 0.0))
-            self._state["open_orders"] = int(self._state.get("open_orders", 0)) + 1
-            self._mark_processed(request_id)
-            self._persist_state()
-        elif broker_status == "not_implemented":
-            result["reason"] = broker_result.get("reason", "live broker adapter not implemented yet")
-
-        self._write_audit(result)
-        return result
+        finally:
+            self._release_request(request_id)
 
     def cancel_order(self, broker_order_id: str) -> Dict[str, Any]:
         out = self.broker.cancel_order(broker_order_id)
         if out.get("status") == "cancelled":
-            self._state["open_orders"] = max(0, int(self._state.get("open_orders", 0)) - 1)
-            self._persist_state()
+            with self._state_lock:
+                self._state["open_orders"] = max(0, int(self._state.get("open_orders", 0)) - 1)
+                self._persist_state()
         return out
 
     def get_order(self, broker_order_id: str) -> Dict[str, Any]:

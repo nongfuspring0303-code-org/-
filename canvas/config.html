@@ -202,6 +202,20 @@
   <script src="./runtime-config.js"></script>
   <script>
     const API_BASE = window.RUNTIME_CONFIG?.API_BASE || 'http://127.0.0.1:18787';
+    const AUTH_TOKEN = window.RUNTIME_CONFIG?.AUTH_TOKEN || 'edt-local-dev-token';
+
+    function authHeaders(extra = {}) {
+      return {
+        'Content-Type': 'application/json',
+        'X-EDT-Token': AUTH_TOKEN,
+        ...extra
+      };
+    }
+
+    async function apiFetch(url, options = {}) {
+      const headers = authHeaders(options.headers || {});
+      return fetch(url, { ...options, headers });
+    }
 
     const state = {
       sector: { schema_version: 'v1.0', mappings: [] },
@@ -290,7 +304,7 @@
 
     async function loadSectorMapping() {
       try {
-        const r = await fetch(`${API_BASE}/api/config/sector-mapping`);
+        const r = await apiFetch(`${API_BASE}/api/config/sector-mapping`);
         if (r.ok) state.sector = await r.json();
       } catch (_) {
         if (state.sector.mappings.length === 0) state.sector.mappings = [sectorTemplate()];
@@ -300,7 +314,7 @@
 
     async function loadStockPool() {
       try {
-        const r = await fetch(`${API_BASE}/api/config/stock-pool`);
+        const r = await apiFetch(`${API_BASE}/api/config/stock-pool`);
         if (r.ok) state.stock = await r.json();
       } catch (_) {
         if (state.stock.stocks.length === 0) state.stock.stocks = [stockTemplate()];
@@ -310,9 +324,8 @@
 
     async function saveSectorMapping() {
       state.sector.updated_at = new Date().toISOString();
-      await fetch(`${API_BASE}/api/config/sector-mapping`, {
+      await apiFetch(`${API_BASE}/api/config/sector-mapping`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state.sector)
       });
       alert('板块映射已保存');
@@ -321,9 +334,8 @@
 
     async function saveStockPool() {
       state.stock.updated_at = new Date().toISOString();
-      await fetch(`${API_BASE}/api/config/stock-pool`, {
+      await apiFetch(`${API_BASE}/api/config/stock-pool`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state.stock)
       });
       alert('股票池已保存');
@@ -344,9 +356,8 @@
         alert('trace_id 和纠错原因不能为空');
         return;
       }
-      await fetch(`${API_BASE}/api/feedback`, {
+      await apiFetch(`${API_BASE}/api/feedback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       alert('纠错已提交并回传目标模块');

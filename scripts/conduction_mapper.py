@@ -9,6 +9,8 @@ rule.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 import yaml
@@ -21,6 +23,7 @@ class ConductionMapper(EDTModule):
 
     def __init__(self, config_path: Optional[str] = None):
         super().__init__("ConductionMapper", "1.0.0", config_path)
+        self.chain_config_path = Path(__file__).resolve().parent.parent / "configs" / "conduction_chain.yaml"
 
     def validate_input(self, input_data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         required = ["event_id", "category", "severity", "lifecycle_state"]
@@ -36,6 +39,146 @@ class ConductionMapper(EDTModule):
             return payload.get("mapping", {})
         except Exception:
             return {}
+
+    def _load_chain_config(self) -> Dict[str, Any]:
+        try:
+            payload = yaml.safe_load(self.chain_config_path.read_text(encoding="utf-8")) or {}
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _normalize_text(*parts: Any) -> str:
+        return " ".join(str(part or "").lower() for part in parts).strip()
+
+    @staticmethod
+    def _matches_any(text: str, keywords: List[str]) -> bool:
+        lower = text.lower()
+        for keyword in keywords:
+            needle = str(keyword).strip().lower()
+            if not needle:
+                continue
+            if " " in needle or any(ord(ch) > 127 for ch in needle):
+                if needle in lower:
+                    return True
+            else:
+                tokens = set()
+                current = []
+                for ch in lower:
+                    if ch.isalnum():
+                        current.append(ch)
+                    else:
+                        if current:
+                            tokens.add("".join(current))
+                            current = []
+                if current:
+                    tokens.add("".join(current))
+                if needle in tokens:
+                    return True
+        return False
+
+    def _match_chain_template(self, category: str, headline: str, summary: str) -> Optional[Dict[str, Any]]:
+        chain_cfg = self._load_chain_config()
+        templates = {item.get("id"): item for item in chain_cfg.get("chain_templates", []) if isinstance(item, dict)}
+        mapping_rules = chain_cfg.get("event_to_chain_mapping", []) or []
+        text = self._normalize_text(headline, summary)
+
+        selected_chain_id = None
+        for rule in mapping_rules:
+            keywords = rule.get("event_keywords", [])
+            if isinstance(keywords, list) and self._matches_any(text, keywords):
+                selected_chain_id = rule.get("chain_id")
+                break
+
+        if category == "C" and "tariff_chain" in templates:
+            selected_chain_id = "tariff_chain"
+        elif category == "E" and not selected_chain_id and "rate_cut_chain" in templates:
+            selected_chain_id = "rate_cut_chain"
+
+        if not selected_chain_id:
+            return None
+
+        template = templates.get(selected_chain_id)
+        if not template:
+            return None
+        return template
+
+    @staticmethod
+    def _level_items(levels: List[Dict[str, Any]], target_level: str) -> List[Dict[str, Any]]:
+        for level in levels:
+            if level.get("level") == target_level:
+                if target_level == "macro":
+                    return list(level.get("factors", []))
+                if target_level == "sector":
+                    return list(level.get("sectors", []))
+                if target_level == "theme":
+                    return list(level.get("themes", []))
+        return []
+
+    def _build_template_mapping(self, template: Dict[str, Any], sector_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        levels = template.get("levels", []) or []
+        conduction_path = [str(level.get("name", "")) for level in levels if level.get("name")]
+
+        macro_factors = []
+        for item in self._level_items(levels, "macro"):
+            macro_factors.append(
+                {
+                    "factor": item.get("factor"),
+                    "direction": item.get("direction"),
+                    "strength": item.get("strength"),
+                    "reason": f"模板 {template.get('id', 'unknown')} 命中",
+                }
+            )
+
+        sector_impacts = []
+        for item in self._level_items(levels, "sector"):
+            sector_impacts.append(
+                {
+                    "sector": item.get("name"),
+                    "direction": item.get("direction"),
+                    "driver_type": "template",
+                    "reason": f"模板 {template.get('id', 'unknown')} 命中",
+                    "impact_score": item.get("impact_score", 0.0),
+                }
+            )
+
+        stock_candidates = []
+        for item in self._level_items(levels, "sector"):
+            sector_name = str(item.get("name", ""))
+            for candidate in sector_data:
+                candidate_sector = str(candidate.get("sector") or candidate.get("industry") or "")
+                if not candidate_sector:
+                    continue
+                if sector_name and sector_name.lower() in candidate_sector.lower():
+                    stock_candidates.append(
+                        {
+                            "symbol": candidate.get("symbol", ""),
+                            "sector": candidate_sector,
+                            "direction": item.get("direction", "benefit"),
+                            "event_beta": 1.0,
+                            "liquidity_tier": "high",
+                            "reason": f"模板 {template.get('id', 'unknown')} 关联",
+                        }
+                    )
+
+        if not stock_candidates:
+            stock_candidates = []
+
+        confidence = 80
+        if template.get("id") == "rate_cut_chain":
+            confidence = 88
+        elif template.get("id") == "inflation_shock_chain":
+            confidence = 82
+
+        return {
+            "macro_factors": macro_factors,
+            "asset_impacts": [],
+            "sector_impacts": sector_impacts,
+            "stock_candidates": stock_candidates,
+            "conduction_path": conduction_path or [template.get("name", "模板链路")],
+            "confidence": confidence,
+            "mapping_source": f"template:{template.get('id', 'unknown')}",
+        }
 
     def _apply_sector_mapping(self, sector_impacts: List[Dict[str, Any]], sector_data: List[Dict[str, Any]]) -> None:
         if not sector_data:
@@ -173,7 +316,18 @@ class ConductionMapper(EDTModule):
                 errors=[{"code": "INSUFFICIENT_EVENT_CONTEXT", "message": "Headline or summary is required"}],
             )
 
-        if category == "C":
+        template = self._match_chain_template(category, headline, summary)
+        if template and template.get("id") == "tariff_chain":
+            mapping = self._tariff_mapping()
+            mapping["mapping_source"] = "template:tariff_chain"
+            mapping["conduction_path"] = ["关税升级", "通胀压力上升", "增长预期下降", "出口链承压", "进口替代链受益"]
+        elif template and template.get("id") == "rate_cut_chain":
+            mapping = self._policy_mapping(policy_intervention, sector_data)
+            mapping["mapping_source"] = "template:rate_cut_chain"
+            mapping["conduction_path"] = ["政策干预预期", "流动性改善预期", "受益资产反弹"]
+        elif template:
+            mapping = self._build_template_mapping(template, sector_data)
+        elif category == "C":
             mapping = self._tariff_mapping()
         elif category == "E":
             mapping = self._policy_mapping(policy_intervention, sector_data)
@@ -211,6 +365,7 @@ class ConductionMapper(EDTModule):
                 "conduction_path": mapping["conduction_path"],
                 "confidence": mapping["confidence"],
                 "needs_manual_review": needs_manual_review,
+                "mapping_source": mapping.get("mapping_source", "rule"),
                 "audit": {
                     "module": self.name,
                     "rule_version": "conduction_v1",

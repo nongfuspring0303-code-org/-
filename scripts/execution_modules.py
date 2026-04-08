@@ -6,6 +6,7 @@ Execution modules for EDT (T4.1 - T4.4).
 from __future__ import annotations
 
 from pathlib import Path
+import math
 from typing import Any, Dict, Optional
 
 from edt_module_base import EDTModule, ModuleInput, ModuleOutput, ModuleStatus
@@ -13,6 +14,15 @@ from edt_module_base import EDTModule, ModuleInput, ModuleOutput, ModuleStatus
 
 def _default_config_path() -> str:
     return str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 class LiquidityChecker(EDTModule):
@@ -26,18 +36,20 @@ class LiquidityChecker(EDTModule):
         for key in required:
             if key not in input_data:
                 return False, f"Missing required field: {key}"
-        if not (-1 <= float(input_data["correlation"]) <= 1):
+        correlation = _safe_float(input_data["correlation"], 0.0)
+        spread_pct = _safe_float(input_data["spread_pct"], 0.0)
+        if not (-1 <= correlation <= 1):
             return False, "correlation must be in [-1,1]"
-        if float(input_data["spread_pct"]) < 0:
+        if spread_pct < 0:
             return False, "spread_pct must be >=0"
         return True, None
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
-        vix = float(raw["vix"])
-        ted = float(raw["ted"])
-        corr = float(raw["correlation"])
-        spread_pct = float(raw["spread_pct"])
+        vix = _safe_float(raw.get("vix"), 0.0)
+        ted = _safe_float(raw.get("ted"), 0.0)
+        corr = _safe_float(raw.get("correlation"), 0.0)
+        spread_pct = _safe_float(raw.get("spread_pct"), 0.0)
 
         thresholds = self._get_config("modules.LiquidityChecker.params.thresholds", {})
         micro = self._get_config("modules.LiquidityChecker.params.micro_thresholds", {})
@@ -95,9 +107,18 @@ class RiskGatekeeper(EDTModule):
         for key in required:
             if key not in input_data:
                 return False, f"Missing required field: {key}"
-        if not (-1 <= float(input_data["correlation"]) <= 1):
+        try:
+            correlation = float(input_data["correlation"])
+            fatigue_index = float(input_data["fatigue_index"])
+            score = float(input_data["score"])
+            a1 = float(input_data["A1"])
+        except (TypeError, ValueError):
+            return False, "numeric fields must be valid numbers"
+        if not all(math.isfinite(value) for value in (correlation, fatigue_index, score, a1)):
+            return False, "numeric fields must be finite"
+        if not (-1 <= correlation <= 1):
             return False, "correlation must be in [-1,1]"
-        if not (0 <= float(input_data["fatigue_index"]) <= 100):
+        if not (0 <= fatigue_index <= 100):
             return False, "fatigue_index must be in [0,100]"
         return True, None
 
@@ -117,6 +138,7 @@ class RiskGatekeeper(EDTModule):
             human_confirm_required: bool,
             warnings: list[str] | None = None,
             rejection_reason: str = "",
+            matched_score_tier: str | None = None,
         ) -> ModuleOutput:
             warnings_final = warnings or []
             triggered = [item["gate"] for item in decisions if item.get("triggered")]
@@ -135,6 +157,7 @@ class RiskGatekeeper(EDTModule):
                 "mapping_version": str(raw.get("mapping_version", "factor_map_v1")),
                 "temperature": raw.get("temperature"),
                 "timeout_ms": raw.get("timeout_ms"),
+                "matched_score_tier": matched_score_tier,
             }
             reasoning = (
                 f"final_action={final_action}; triggered={triggered}; "
@@ -286,6 +309,7 @@ class RiskGatekeeper(EDTModule):
         # G5: score tier (config-driven from PositionSizer tiers)
         score = float(raw["score"])
         tier_multiplier = 0.0
+        matched_score_tier = None
         tiers_cfg = self._get_config("modules.PositionSizer.params.tiers", {})
         for tier_name, tier in tiers_cfg.items():
             rng = tier.get("score_range", [])
@@ -294,8 +318,18 @@ class RiskGatekeeper(EDTModule):
             lo, hi = float(rng[0]), float(rng[1])
             if lo <= score <= hi:
                 tier_multiplier = float(tier.get("position_pct", 0.0))
+                matched_score_tier = tier_name
+                decisions.append(
+                    {
+                        "gate": "G5",
+                        "triggered": True,
+                        "action": "POSITION_TIER",
+                        "reason": f"score={score:.2f} matched={tier_name}",
+                    }
+                )
                 break
-        decisions.append({"gate": "G5", "triggered": True, "action": "POSITION_TIER", "reason": f"score={score:.2f}"})
+        if matched_score_tier is None:
+            decisions.append({"gate": "G5", "triggered": False, "action": "POSITION_TIER", "reason": f"score={score:.2f} no_matching_tier"})
 
         # G6: policy intervention direction flip (config-driven)
         direction = "no_change"
@@ -342,8 +376,18 @@ class PositionSizer(EDTModule):
         for key in required:
             if key not in input_data:
                 return False, f"Missing required field: {key}"
-        if float(input_data["account_equity"]) < 0:
+        try:
+            score = float(input_data["score"])
+            risk_gate_multiplier = float(input_data["risk_gate_multiplier"])
+            account_equity = float(input_data["account_equity"])
+        except (TypeError, ValueError):
+            return False, "numeric fields must be valid numbers"
+        if not all(math.isfinite(value) for value in (score, risk_gate_multiplier, account_equity)):
+            return False, "numeric fields must be finite"
+        if account_equity < 0:
             return False, "account_equity must be >=0"
+        if risk_gate_multiplier < 0:
+            return False, "risk_gate_multiplier must be >=0"
         return True, None
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
@@ -376,13 +420,13 @@ class PositionSizer(EDTModule):
         max_open_events = int(daily_cfg.get("max_open_events", 5))
         daily_loss_pct = float(raw.get("daily_loss_pct", 0.0))
         current_open_events = int(raw.get("current_open_events", 0))
-        breach_reason = None
+        breach_reasons = []
         if daily_loss_pct >= max_loss_pct:
-            breach_reason = f"daily_loss_pct {daily_loss_pct:.4f} >= max_loss_pct {max_loss_pct:.4f}"
+            breach_reasons.append(f"daily_loss_pct {daily_loss_pct:.4f} >= max_loss_pct {max_loss_pct:.4f}")
             final_pct = 0.0
             final_notional = 0.0
         if current_open_events >= max_open_events:
-            breach_reason = f"open_events {current_open_events} >= max_open_events {max_open_events}"
+            breach_reasons.append(f"open_events {current_open_events} >= max_open_events {max_open_events}")
             final_pct = 0.0
             final_notional = 0.0
 
@@ -394,8 +438,9 @@ class PositionSizer(EDTModule):
                 "final_position_pct": final_pct,
                 "final_notional": final_notional,
                 "liquidity_adjustment": liq_adj,
-                "risk_limit_breached": breach_reason is not None,
-                "risk_limit_reason": breach_reason,
+                "risk_limit_breached": bool(breach_reasons),
+                "risk_limit_reason": breach_reasons[0] if breach_reasons else None,
+                "risk_limit_reasons": breach_reasons,
             },
         )
 
@@ -411,15 +456,24 @@ class ExitManager(EDTModule):
         for key in required:
             if key not in input_data:
                 return False, f"Missing required field: {key}"
-        if float(input_data["entry_price"]) <= 0 or float(input_data["risk_per_share"]) <= 0:
+        try:
+            entry_price = float(input_data["entry_price"])
+            risk_per_share = float(input_data["risk_per_share"])
+        except (TypeError, ValueError):
+            return False, "entry_price and risk_per_share must be valid numbers"
+        if not all(math.isfinite(value) for value in (entry_price, risk_per_share)):
+            return False, "entry_price and risk_per_share must be finite"
+        if entry_price <= 0 or risk_per_share <= 0:
             return False, "entry_price and risk_per_share must be >0"
+        if str(input_data["direction"]).strip().lower() not in ("long", "short"):
+            return False, "direction must be long or short"
         return True, None
 
     def execute(self, input_data: ModuleInput) -> ModuleOutput:
         raw = input_data.raw_data
         entry = float(raw["entry_price"])
         r = float(raw["risk_per_share"])
-        direction = raw["direction"]
+        direction = str(raw["direction"]).strip().lower()
         hold_days = int(raw.get("hold_days", 0))
         profit_r = float(raw.get("profit_r", 0.0))
         profit_retrace = float(raw.get("profit_retrace", 0.0))
@@ -443,5 +497,6 @@ class ExitManager(EDTModule):
                 "hard_stop": hard_stop,
                 "take_profit_levels": tp,
                 "dynamic_triggers": triggers,
+                "direction": direction,
             },
         )

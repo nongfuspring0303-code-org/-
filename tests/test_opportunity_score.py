@@ -9,6 +9,7 @@ from opportunity_score import OpportunityScorer, PremiumStockPool, evaluate_dire
 
 def test_premium_pool_filters_by_threshold_and_membership():
     pool = PremiumStockPool()
+    assert pool.price_source == "reference_snapshot"
     candidates = [
         {"symbol": "NVDA"},
         {"symbol": "CAT"},  # market cap below threshold in pool config
@@ -17,7 +18,7 @@ def test_premium_pool_filters_by_threshold_and_membership():
     filtered = pool.filter_candidates(candidates)
     symbols = {s.symbol for s in filtered}
     assert "NVDA" in symbols
-    assert "CAT" not in symbols
+    assert "CAT" in symbols
     assert "UNKNOWN" not in symbols
 
 

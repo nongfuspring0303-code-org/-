@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import json
 import argparse
-import py_compile
+import ast
 import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,8 @@ try:
 except Exception as exc:  # noqa: BLE001
     print(f"FATAL: missing yaml dependency: {exc}")
     raise SystemExit(2)
+
+from phase3_evidence_ledger import Phase3EvidenceLedger
 
 
 STATUS_ORDER = {"GREEN": 0, "YELLOW": 1, "RED": 2}
@@ -71,10 +74,64 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def compile_source(path: Path) -> None:
+    ast.parse(read_text(path), filename=str(path))
+
+
 def run_command(args: list[str], cwd: Path) -> tuple[int, str]:
     proc = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace")
     output = (proc.stdout or "") + (proc.stderr or "")
     return proc.returncode, output.strip()
+
+
+def build_phase3_pressure_sample() -> list[dict[str, Any]]:
+    ts = "2026-04-09T01:02:03Z"
+    return [
+        {
+            "headline": "Fed signals policy shift",
+            "source_url": "https://example.com/news-1",
+            "raw_text": "policy shift",
+            "source_type": "rss",
+            "timestamp": ts,
+        },
+        {
+            "headline": "AI spending remains strong",
+            "source_url": "https://example.com/news-2",
+            "raw_text": "ai spending",
+            "source_type": "official",
+            "timestamp": ts,
+        },
+    ]
+
+
+def run_phase3_pressure_gate(min_board_coverage: float = 0.5, max_p99_ms: float = 5000.0, min_throughput: float = 0.1) -> tuple[int, str]:
+    gate_path = ROOT / "scripts" / "run_phase3_pressure_gate.py"
+    if not gate_path.exists():
+        return 1, "run_phase3_pressure_gate.py is missing"
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as handle:
+        json.dump(build_phase3_pressure_sample(), handle, ensure_ascii=False)
+        sample_path = Path(handle.name)
+
+    try:
+        args = [
+            sys.executable,
+            str(gate_path),
+            "--input-json",
+            str(sample_path),
+            "--min-board-coverage",
+            str(min_board_coverage),
+            "--max-p99-ms",
+            str(max_p99_ms),
+            "--min-throughput",
+            str(min_throughput),
+        ]
+        return run_command(args, ROOT)
+    finally:
+        try:
+            sample_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def safe_print(text: str) -> None:
@@ -260,6 +317,57 @@ def check_test_runtime() -> CheckResult:
     return result
 
 
+def check_pressure_gate() -> CheckResult:
+    result = CheckResult(name="PHASE3_PRESSURE_GATE", status="GREEN", summary="Phase-3 pressure gate passes on local replay data.")
+    code, output = run_phase3_pressure_gate()
+    result.commands.append(
+        f"{sys.executable} scripts/run_phase3_pressure_gate.py --input-json <local sample> --min-board-coverage 0.5 --max-p99-ms 5000 --min-throughput 0.1"
+    )
+    if code != 0:
+        result.status = "RED"
+        result.summary = "Phase-3 pressure gate failed."
+        result.errors.append("run_phase3_pressure_gate.py returned non-zero exit code.")
+        if output:
+            result.evidence.append(output)
+        return result
+
+    result.evidence.append(output)
+    return result
+
+
+def check_phase3_evidence_ledger() -> CheckResult:
+    ledger = Phase3EvidenceLedger()
+    summary = ledger.read_summary()
+    result = CheckResult(
+        name="PHASE3_EVIDENCE_LEDGER",
+        status="GREEN",
+        summary="Phase-3 evidence ledger is present and rolling statistics are available.",
+    )
+    total_runs = int(summary.get("total_runs", 0) or 0)
+    live_run_count = int(summary.get("live_run_count", 0) or 0)
+    replay_run_count = int(summary.get("replay_run_count", 0) or 0)
+
+    if total_runs <= 0:
+        result.status = "RED"
+        result.summary = "Phase-3 evidence ledger has no records yet."
+        result.errors.append("No pressure-gate records found in logs/phase3_evidence.jsonl.")
+        return result
+
+    result.evidence.extend(
+        [
+            f"total_runs={total_runs}",
+            f"live_run_count={live_run_count}",
+            f"replay_run_count={replay_run_count}",
+            f"real_flow_evidence={bool(summary.get('real_flow_evidence'))}",
+            f"pass_rate={summary.get('pass_rate', 0)}",
+        ]
+    )
+    if not summary.get("real_flow_evidence"):
+        result.warnings.append("No live pressure-gate records found; current evidence is replay-only.")
+
+    return result
+
+
 def check_recovery() -> CheckResult:
     result = CheckResult(name="RECOVERY", status="GREEN", summary="Health system self-check and recovery entrypoints are present.")
     required = [
@@ -277,7 +385,7 @@ def check_recovery() -> CheckResult:
 
     for script_path in (ROOT / "scripts" / "system_healthcheck.py", ROOT / "scripts" / "system_autofix.py"):
         try:
-            py_compile.compile(str(script_path), doraise=True)
+            compile_source(script_path)
             result.evidence.append(f"compiled={script_path.name}")
         except Exception as exc:  # noqa: BLE001
             result.status = "RED"
@@ -306,7 +414,7 @@ def run_health_system_self_checks() -> list[CheckResult]:
     compile_check = CheckResult(name="SELF_COMPILE", status="GREEN", summary="Health-system scripts compile.")
     for script_path in (ROOT / "scripts" / "system_healthcheck.py", ROOT / "scripts" / "system_autofix.py"):
         try:
-            py_compile.compile(str(script_path), doraise=True)
+            compile_source(script_path)
             compile_check.evidence.append(f"compiled={script_path.name}")
         except Exception as exc:  # noqa: BLE001
             compile_check.status = "RED"
@@ -375,6 +483,8 @@ def run_project_checks() -> list[CheckResult]:
         check_chain(),
         check_contract(),
         check_test_runtime(),
+        check_pressure_gate(),
+        check_phase3_evidence_ledger(),
         check_recovery(),
     ]
 

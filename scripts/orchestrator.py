@@ -10,6 +10,8 @@ Orchestrator module for AI node orchestration (C2).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
 from dataclasses import dataclass, field
@@ -27,6 +29,12 @@ def _default_config_path() -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _stable_trace_id(node_type: str, payload: Dict[str, Any]) -> str:
+    canonical = json.dumps({"node_type": node_type, "payload": payload}, sort_keys=True, ensure_ascii=False, default=str)
+    digest = hashlib.sha1(canonical.encode("utf-8")).hexdigest()[:16].upper()
+    return f"TRC-{digest}"
 
 
 @dataclass
@@ -176,9 +184,9 @@ class OrchestratorNode(EDTModule):
         start_time = time.time()
         data = input_data.raw_data
 
-        trace_id = data.get("trace_id", f"TRC-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{id(data)}")
         node_type = data.get("node_type")
         payload = data.get("payload", {})
+        trace_id = data.get("trace_id") or _stable_trace_id(str(node_type), payload)
 
         default_timeout = int(self._get_config("modules.OrchestratorNode.params.timeout_ms", 10000))
         timeout_ms = int(data.get("timeout_ms", default_timeout))

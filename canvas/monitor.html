@@ -87,6 +87,16 @@
   <script src="./runtime-config.js"></script>
   <script>
     const API_BASE = window.RUNTIME_CONFIG?.API_BASE || 'http://127.0.0.1:18787';
+    const AUTH_TOKEN = window.RUNTIME_CONFIG?.AUTH_TOKEN || 'edt-local-dev-token';
+
+    function apiFetch(url, options = {}) {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-EDT-Token': AUTH_TOKEN,
+        ...(options.headers || {})
+      };
+      return fetch(url, { ...options, headers });
+    }
 
     function levelClass(level) {
       if (level === 'healthy') return 'healthy';
@@ -131,7 +141,7 @@
 
     async function fetchStatus() {
       try {
-        const res = await fetch(`${API_BASE}/api/monitor/status`);
+        const res = await apiFetch(`${API_BASE}/api/monitor/status`);
         if (!res.ok) return;
         const data = await res.json();
         render(data);

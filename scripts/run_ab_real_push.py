@@ -7,6 +7,7 @@ import argparse
 import json
 import time
 from datetime import datetime, timezone
+import os
 from typing import Any, Dict, List
 from urllib import request
 
@@ -23,7 +24,10 @@ def post_json(url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     req = request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "X-EDT-Token": os.getenv("EDT_API_TOKEN", os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")),
+        },
         method="POST",
     )
     with request.urlopen(req, timeout=10) as resp:
@@ -31,7 +35,16 @@ def post_json(url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(body)
 
 
-def normalize_sector_update(conduction: Dict[str, Any], trace_id: str, ts: str) -> Dict[str, Any]:
+def _num_or_default(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_sector_update(conduction: Dict[str, Any], trace_id: str, request_id: str, batch_id: str, ts: str) -> Dict[str, Any]:
     sectors: List[Dict[str, Any]] = []
     for item in conduction.get("sector_impacts", []):
         direction_raw = str(item.get("direction", "WATCH")).lower()
@@ -62,7 +75,10 @@ def normalize_sector_update(conduction: Dict[str, Any], trace_id: str, ts: str) 
         chain.append({"level": level, "name": str(name), "relation": "affects_below"})
 
     return {
+        "type": "sector_update",
         "trace_id": trace_id,
+        "request_id": request_id,
+        "batch_id": batch_id,
         "schema_version": "v1.0",
         "sectors": sectors,
         "conduction_chain": chain,
@@ -70,13 +86,16 @@ def normalize_sector_update(conduction: Dict[str, Any], trace_id: str, ts: str) 
     }
 
 
-def normalize_event_update(result: Dict[str, Any], trace_id: str, ts: str) -> Dict[str, Any]:
+def normalize_event_update(result: Dict[str, Any], trace_id: str, request_id: str, batch_id: str, ts: str) -> Dict[str, Any]:
     intel = result.get("intel", {})
     event_object = intel.get("event_object", {})
     severity = intel.get("severity", {})
     signal = result.get("analysis", {}).get("signal", {})
     return {
+        "type": "event_update",
         "trace_id": trace_id,
+        "request_id": request_id,
+        "batch_id": batch_id,
         "schema_version": "v1.0",
         "headline": event_object.get("headline", "A/B 实时计算事件"),
         "source": event_object.get("source_url", "A-Module"),
@@ -87,10 +106,13 @@ def normalize_event_update(result: Dict[str, Any], trace_id: str, ts: str) -> Di
     }
 
 
-def normalize_opportunity_update(result: Dict[str, Any], trace_id: str, ts: str) -> Dict[str, Any]:
+def normalize_opportunity_update(result: Dict[str, Any], trace_id: str, request_id: str, batch_id: str, ts: str) -> Dict[str, Any]:
     opp = result.get("analysis", {}).get("opportunity_update", {})
     payload = {
+        "type": "opportunity_update",
         "trace_id": trace_id,
+        "request_id": request_id,
+        "batch_id": batch_id,
         "schema_version": "v1.0",
         "opportunities": opp.get("opportunities", []),
         "timestamp": opp.get("timestamp", ts),
@@ -106,29 +128,36 @@ def one_cycle(api_base: str, require_live: bool = False) -> None:
     news = raw.get("news", {})
     market = raw.get("market_data", {})
     sector_data = raw.get("sector_data", [])
+    if require_live and (news.get("metadata", {}).get("is_test_data") or market.get("is_test_data")):
+        raise RuntimeError("live source unavailable: adapter returned test data")
 
     payload = {
         "headline": news.get("headline", ""),
         "source": news.get("source_url", news.get("source", "")),
         "timestamp": news.get("timestamp", utc_now_iso()),
         "summary": news.get("raw_text", news.get("headline", "")),
-        "vix": market.get("vix_level", 20),
-        "vix_change_pct": market.get("vix_change_pct", 0),
-        "spx_move_pct": market.get("spx_change_pct", 0),
-        "sector_move_pct": market.get("etf_volatility", {}).get("change_pct", 0),
+        "vix": _num_or_default(market.get("vix_level"), None),
+        "vix_change_pct": _num_or_default(market.get("vix_change_pct"), None),
+        "spx_move_pct": _num_or_default(market.get("spx_change_pct"), None),
+        "sector_move_pct": _num_or_default(market.get("etf_volatility", {}).get("change_pct"), None),
         "sequence": 1,
         "sector_data": sector_data,
     }
 
     result = runner.run(payload)
     event_id = result.get("intel", {}).get("event_object", {}).get("event_id", "evt_ab_real_001")
+    trace_id = str(result.get("trace_id") or event_id)
+    request_id = str(result.get("request_id") or trace_id)
+    batch_id = str(result.get("batch_id") or f"BATCH-{request_id}")
     ts = utc_now_iso()
 
-    event_update = normalize_event_update(result, event_id, ts)
-    sector_update = normalize_sector_update(result.get("analysis", {}).get("conduction", {}), event_id, ts)
-    opportunity_update = normalize_opportunity_update(result, event_id, ts)
+    event_update = normalize_event_update(result, trace_id, request_id, batch_id, ts)
+    sector_update = normalize_sector_update(result.get("analysis", {}).get("conduction", {}), trace_id, request_id, batch_id, ts)
+    opportunity_update = normalize_opportunity_update(result, trace_id, request_id, batch_id, ts)
 
-    print("[AB] trace_id:", event_id)
+    print("[AB] trace_id:", trace_id)
+    print("[AB] request_id:", request_id)
+    print("[AB] batch_id:", batch_id)
     print("[AB] headline:", event_update.get("headline"))
     print("[AB] sectors:", len(sector_update.get("sectors", [])))
     print("[AB] opportunities:", len(opportunity_update.get("opportunities", [])))
@@ -167,6 +196,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-    source_type = str(news.get("source_type", "")).lower()
-    if require_live and source_type in {"fallback", ""}:
-        raise RuntimeError("live source unavailable: NewsIngestion fell back to synthetic item")

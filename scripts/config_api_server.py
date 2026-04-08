@@ -10,9 +10,11 @@ C-6 配置中心 API 服务。
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import sys
+from typing import Optional
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
@@ -23,12 +25,15 @@ from scripts.human_feedback_center import HumanFeedbackCenter
 from scripts.health_monitor import HealthMonitor
 from scripts.risk_gatekeeper import RiskGatekeeper, ActionType
 
+DEFAULT_API_TOKEN = os.getenv("EDT_API_TOKEN", os.getenv("EDT_WS_TOKEN", "edt-local-dev-token"))
+
 
 class ConfigAPIHandler(BaseHTTPRequestHandler):
     center = HumanFeedbackCenter()
     monitor = HealthMonitor()
     gatekeeper = RiskGatekeeper()
     event_publisher = None
+    auth_token = DEFAULT_API_TOKEN
 
     def _send_json(self, status: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -36,7 +41,7 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-EDT-Token")
         self.send_header("Access-Control-Allow-Methods", "GET,PUT,POST,OPTIONS")
         self.end_headers()
         self.wfile.write(body)
@@ -46,10 +51,29 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length).decode("utf-8") if length else "{}"
         return json.loads(raw or "{}")
 
+    def _is_authorized(self) -> bool:
+        if not self.auth_token:
+            return True
+        header_token = self.headers.get("X-EDT-Token", "").strip()
+        if header_token == self.auth_token:
+            return True
+        auth = self.headers.get("Authorization", "").strip()
+        if auth.startswith("Bearer "):
+            return auth.removeprefix("Bearer ").strip() == self.auth_token
+        return False
+
+    def _require_auth(self) -> bool:
+        if self._is_authorized():
+            return True
+        self._send_json(401, {"error": "unauthorized"})
+        return False
+
     def do_OPTIONS(self):  # noqa: N802
         self._send_json(200, {"ok": True})
 
     def do_GET(self):  # noqa: N802
+        if not self._require_auth():
+            return
         if self.path == "/api/config/sector-mapping":
             self._send_json(200, self.center.get_sector_mapping())
             return
@@ -69,6 +93,8 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "not found"})
 
     def do_PUT(self):  # noqa: N802
+        if not self._require_auth():
+            return
         payload = self._read_json()
         if self.path == "/api/config/sector-mapping":
             self.center.update_sector_mapping(payload)
@@ -81,6 +107,8 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "not found"})
 
     def do_POST(self):  # noqa: N802
+        if not self._require_auth():
+            return
         if self.path == "/api/monitor/report":
             payload = self._read_json()
             required = ["module", "signal_type", "severity", "message", "trace_id"]
@@ -188,7 +216,7 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
         resp = self.center.submit_feedback(**payload)
         self._send_json(200, resp)
 
-    def _publish_event(self, event_type: str, payload: dict, trace_id: str | None = None):
+    def _publish_event(self, event_type: str, payload: dict, trace_id: Optional[str] = None):
         if not self.event_publisher:
             return False
         try:
@@ -202,6 +230,7 @@ class ConfigAPIHandler(BaseHTTPRequestHandler):
 def create_server(host: str = "127.0.0.1", port: int = 8787, event_publisher=None) -> HTTPServer:
     if event_publisher is not None:
         ConfigAPIHandler.event_publisher = staticmethod(event_publisher)
+    ConfigAPIHandler.auth_token = DEFAULT_API_TOKEN
     return HTTPServer((host, port), ConfigAPIHandler)
 
 

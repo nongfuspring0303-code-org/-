@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 import time
@@ -149,6 +150,7 @@ def _dedupe_items(
     min_token_overlap: int = 3,
 ) -> List[Dict[str, Any]]:
     seen: List[Dict[str, Any]] = []
+    token_index: Dict[str, List[int]] = defaultdict(list)
     output: List[Dict[str, Any]] = []
     window_seconds = max(1, window_minutes) * 60
 
@@ -159,9 +161,17 @@ def _dedupe_items(
         tokens = _tokenize(headline)
 
         is_dup = False
-        for prior in seen:
+        if tokens:
+            candidate_indexes = set()
+            for token in set(tokens):
+                candidate_indexes.update(token_index.get(token, []))
+        else:
+            candidate_indexes = set(range(len(seen)))
+
+        for idx in candidate_indexes:
+            prior = seen[idx]
             prior_dt = prior["dt"]
-            if dt and prior_dt and (dt - prior_dt).total_seconds() > window_seconds:
+            if dt and prior_dt and abs((dt - prior_dt).total_seconds()) > window_seconds:
                 continue
             if prior["headline"] == headline and prior["host"] == host:
                 is_dup = True
@@ -176,6 +186,9 @@ def _dedupe_items(
         if is_dup:
             continue
         seen.append({"headline": headline, "host": host, "dt": dt, "tokens": tokens})
+        seen_idx = len(seen) - 1
+        for token in set(tokens):
+            token_index[token].append(seen_idx)
         output.append(item)
     return output
 

@@ -11,6 +11,7 @@ modules:
         - "Fed"
         - "tariff"
         - "war"
+        - "trade war"
         - "virus"
         - "sanction"
         - "crisis"
@@ -24,7 +25,6 @@ modules:
         - "CEO"
         - "market"
         - "stock"
-        - "trade"
       # vix_amplify_threshold: VIX放大阈值，当VIX>=此值时放大严重程度（不触发事件）
       vix_amplify_threshold: 20
       min_source_rank: "C"

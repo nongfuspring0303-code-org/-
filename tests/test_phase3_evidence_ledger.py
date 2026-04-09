@@ -33,4 +33,7 @@ def test_phase3_evidence_ledger_records_and_summarizes(tmp_path):
     assert summary["real_flow_evidence"] is True
     assert summary["pass_rate"] == 1.0
     assert summary["board_coverage_p99"] == 1.0
-
+    assert (tmp_path / "phase3_evidence_report.json").exists()
+    report_data = ledger.read_report()
+    assert report_data["summary"]["total_runs"] == 2
+    assert report_data["live_vs_replay"]["live_run_count"] == 1

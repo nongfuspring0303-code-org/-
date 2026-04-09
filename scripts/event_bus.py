@@ -8,6 +8,7 @@ import json
 import os
 import uuid
 import logging
+from pathlib import Path
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from typing import Dict, List, Callable, Optional, Any
@@ -19,6 +20,7 @@ from websockets.server import WebSocketServerProtocol
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 DEFAULT_WS_TOKEN = os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")
+DEFAULT_EVENT_BUS_HISTORY_FILE = Path(__file__).resolve().parent.parent / "logs" / "event_bus_history.jsonl"
 
 
 @dataclass
@@ -66,6 +68,9 @@ class EventBus:
         self.replay_buffer: Dict[str, List[EventMessage]] = defaultdict(list)
         self.handlers: Dict[str, Callable] = {}
         self._running = False
+        self.history_file = DEFAULT_EVENT_BUS_HISTORY_FILE
+        self.history_file.parent.mkdir(parents=True, exist_ok=True)
+        self._load_persisted_history()
         
     async def start(self):
         """启动事件总线"""
@@ -246,6 +251,37 @@ class EventBus:
         self.message_history.append(message)
         if len(self.message_history) > self.max_history:
             self.message_history = self.message_history[-self.max_history:]
+        self._persist_message(message)
+
+    def _persist_message(self, message: EventMessage):
+        try:
+            with open(self.history_file, "a", encoding="utf-8") as f:
+                f.write(message.to_json())
+                f.write("\n")
+        except Exception as exc:
+            logger.warning(f"Failed to persist event history: {exc}")
+
+    def _load_persisted_history(self):
+        if not self.history_file.exists():
+            return
+        try:
+            loaded: List[EventMessage] = []
+            with open(self.history_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        loaded.append(EventMessage.from_json(line))
+                    except Exception:
+                        continue
+            if loaded:
+                self.message_history = loaded[-self.max_history:]
+                self.replay_buffer.clear()
+                for message in self.message_history:
+                    self._store_replay_buffer(message)
+        except Exception as exc:
+            logger.warning(f"Failed to load persisted event history: {exc}")
     
     def _store_replay_buffer(self, message: EventMessage):
         """存储重放缓冲区"""

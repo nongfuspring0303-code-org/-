@@ -22,6 +22,7 @@ if str(PROJECT_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from phase3_evidence_ledger import Phase3EvidenceLedger
+from data_adapter import DataAdapter
 
 
 def check_project():
@@ -181,7 +182,23 @@ def check_project():
     else:
         print("  ⚠️  证据台账为空")
         issues.append("证据台账为空")
-    
+
+    print("\n🛰️  外部数据健康检查:")
+    adapter = DataAdapter(audit_dir=str(root / "logs"))
+    _ = adapter.fetch()
+    data_health = adapter.health_report()
+    total_fetches = int(data_health.get("total_fetches", 0) or 0)
+    live_news_count = int(data_health.get("live_news_count", 0) or 0)
+    fallback_news_count = int(data_health.get("fallback_news_count", 0) or 0)
+    market_test_count = int(data_health.get("market_test_count", 0) or 0)
+    if total_fetches > 0:
+        print(
+            f"  ✅ 外部数据健康 ({total_fetches} 次，live={live_news_count}, fallback={fallback_news_count}, market_test={market_test_count})"
+        )
+    else:
+        print("  ⚠️  外部数据健康暂无记录")
+        issues.append("外部数据健康暂无记录")
+
     # 5. 检查测试
     print("\n🧪 测试检查:")
     test_dir = root / "tests"

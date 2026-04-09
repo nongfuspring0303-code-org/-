@@ -8,10 +8,12 @@ import asyncio
 import json
 import sys
 import os
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.event_bus import EventBus, EventMessage
+import scripts.event_bus as event_bus_mod
 
 
 class TestEventMessage:
@@ -54,7 +56,13 @@ class TestEventBus:
     """测试事件总线"""
     
     @pytest.fixture
-    def bus(self):
+    def bus(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            event_bus_mod,
+            "DEFAULT_EVENT_BUS_HISTORY_FILE",
+            Path(tmp_path) / "event_bus_history.jsonl",
+            raising=False,
+        )
         return EventBus(host="localhost", port=8766)
     
     def test_init(self, bus):
@@ -133,12 +141,29 @@ class TestEventBus:
         assert "message_history_count" in stats
         assert "replay_buffer_days" in stats
 
+    def test_default_history_file_is_enabled(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            event_bus_mod,
+            "DEFAULT_EVENT_BUS_HISTORY_FILE",
+            Path(tmp_path) / "event_bus_history.jsonl",
+            raising=False,
+        )
+        bus = event_bus_mod.EventBus(host="localhost", port=8769)
+        assert bus.history_file.name == "event_bus_history.jsonl"
+        assert bus.history_file.parent == Path(tmp_path)
+
 
 class TestEventBusIntegration:
     """集成测试"""
     
-    def test_message_flow(self):
+    def test_message_flow(self, tmp_path, monkeypatch):
         async def run():
+            monkeypatch.setattr(
+                event_bus_mod,
+                "DEFAULT_EVENT_BUS_HISTORY_FILE",
+                Path(tmp_path) / "event_bus_history.jsonl",
+                raising=False,
+            )
             bus = EventBus(host="127.0.0.1", port=8767)
 
             handler_called = False
@@ -159,8 +184,14 @@ class TestEventBusIntegration:
 
         asyncio.run(run())
 
-    def test_trace_id_consistency(self):
+    def test_trace_id_consistency(self, tmp_path, monkeypatch):
         async def run():
+            monkeypatch.setattr(
+                event_bus_mod,
+                "DEFAULT_EVENT_BUS_HISTORY_FILE",
+                Path(tmp_path) / "event_bus_history.jsonl",
+                raising=False,
+            )
             bus = EventBus(host="127.0.0.1", port=8768)
 
             trace_id = "evt_consistency_test"

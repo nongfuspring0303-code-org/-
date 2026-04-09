@@ -94,6 +94,83 @@ def test_canary_source_health_parses_newsapi_payload(tmp_path):
     assert items[0]["source_url"] == "https://example.com/fed-policy-shift"
 
 
+def test_canary_source_health_parses_rss_and_atom_payloads(tmp_path):
+    health = CanarySourceHealth(audit_dir=str(tmp_path))
+    rss_payload = """
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>Fed signals policy shift</title>
+          <link>https://example.com/rss-item</link>
+          <pubDate>Thu, 10 Apr 2026 01:02:03 GMT</pubDate>
+          <description>RSS summary</description>
+        </item>
+      </channel>
+    </rss>
+    """
+    atom_payload = """
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <title>Markets open higher</title>
+        <link href="https://example.com/atom-item" rel="alternate" />
+        <updated>2026-04-10T01:02:03Z</updated>
+        <summary>Atom summary</summary>
+      </entry>
+    </feed>
+    """
+
+    rss_items = health._parse_feed_items(rss_payload, "https://feeds.example.com/rss")
+    atom_items = health._parse_feed_items(atom_payload, "https://feeds.example.com/atom")
+
+    assert len(rss_items) == 1
+    assert rss_items[0]["headline"] == "Fed signals policy shift"
+    assert rss_items[0]["source_url"] == "https://example.com/rss-item"
+    assert rss_items[0]["source_type"] == "rss"
+    assert len(atom_items) == 1
+    assert atom_items[0]["headline"] == "Markets open higher"
+    assert atom_items[0]["source_url"] == "https://example.com/atom-item"
+    assert atom_items[0]["source_type"] == "atom"
+
+
+def test_canary_source_health_fetches_rss_source_once(tmp_path, monkeypatch):
+    rss_payload = """
+    <rss version="2.0">
+      <channel>
+        <item>
+          <title>Fed signals policy shift</title>
+          <link>https://example.com/rss-item</link>
+          <pubDate>Thu, 10 Apr 2026 01:02:03 GMT</pubDate>
+          <description>RSS summary</description>
+        </item>
+      </channel>
+    </rss>
+    """
+
+    class FakeResponse:
+        def __init__(self, payload: str):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self.payload.encode("utf-8")
+
+    def fake_urlopen(req, timeout):
+        return FakeResponse(rss_payload)
+
+    monkeypatch.setattr(csh.urllib.request, "urlopen", fake_urlopen)
+    health = CanarySourceHealth(audit_dir=str(tmp_path))
+    out = health._fetch_source_once({"url": "https://example.com/rss", "kind": "rss"}, 5, 10)
+
+    assert out["status"] == "success"
+    assert out["items"][0]["headline"] == "Fed signals policy shift"
+    assert out["items"][0]["source_type"] == "rss"
+
+
 def test_canary_source_health_yellow_without_samples(tmp_path):
     health = CanarySourceHealth(audit_dir=str(tmp_path))
     summary = health.read_summary()

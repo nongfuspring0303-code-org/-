@@ -17,8 +17,10 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+import xml.etree.ElementTree as ET
 import urllib.error
 import urllib.request
 
@@ -60,10 +62,72 @@ def _parse_ts(value: Optional[str]) -> Optional[datetime]:
     try:
         dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except (TypeError, ValueError):
-        return None
+        try:
+            dt = parsedate_to_datetime(str(value))
+        except (TypeError, ValueError, IndexError):
+            return None
     if not dt.tzinfo:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _find_atom_link(entry: ET.Element, namespace: str) -> str:
+    for link in entry.findall(f"{namespace}link"):
+        href = (link.attrib.get("href") or "").strip()
+        rel = (link.attrib.get("rel") or "alternate").strip().lower()
+        if href and rel in {"alternate", "self", ""}:
+            return href
+    return ""
+
+
+def _parse_atom(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
+    root = ET.fromstring(xml_text)
+    namespace = ""
+    if root.tag.startswith("{") and "}" in root.tag:
+        namespace = root.tag.split("}", 1)[0] + "}"
+    items: List[Dict[str, Any]] = []
+    entries = root.findall(f".//{namespace}entry") or root.findall(".//entry")
+    for entry in entries:
+        title = (entry.findtext(f"{namespace}title") or entry.findtext("title") or "").strip()
+        if not title:
+            continue
+        link = _find_atom_link(entry, namespace) or source_url
+        updated = (entry.findtext(f"{namespace}updated") or entry.findtext("updated") or "").strip()
+        published = (entry.findtext(f"{namespace}published") or entry.findtext("published") or "").strip()
+        timestamp = updated or published
+        summary = (entry.findtext(f"{namespace}summary") or entry.findtext("summary") or entry.findtext(f"{namespace}content") or entry.findtext("content") or "").strip()
+        items.append(
+            {
+                "headline": title,
+                "source_url": link,
+                "timestamp": timestamp,
+                "raw_text": summary,
+                "source_type": "atom",
+            }
+        )
+    return items
+
+
+def _parse_rss(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
+    root = ET.fromstring(xml_text)
+    items: List[Dict[str, Any]] = []
+    for item in root.findall(".//item"):
+        title = (item.findtext("title") or "").strip()
+        if not title:
+            continue
+        link = (item.findtext("link") or source_url).strip() or source_url
+        pub_date = (item.findtext("pubDate") or item.findtext("date") or item.findtext("published") or "").strip()
+        description = (item.findtext("description") or item.findtext("summary") or "").strip()
+        items.append(
+            {
+                "headline": title,
+                "source_url": link,
+                "timestamp": pub_date,
+                "raw_text": description,
+                "source_type": "rss",
+            }
+        )
+    return items
 
 
 def _percentile(values: List[float], pct: float) -> float:
@@ -112,10 +176,10 @@ class CanarySourceHealth:
         self.max_items = int(self.settings.get("max_items", 10))
         self.window_minutes = self._window_minutes()
         self.retry_delays_sec = self._retry_delays()
-        gate = self.settings.get("gate", {}) or {}
+        gate = self._effective_gate_settings()
         self.min_success_rate_1h = float(gate.get("min_success_rate_1h", 0.95))
         self.max_p95_latency_ms = float(gate.get("max_p95_latency_ms", 3000))
-        self.max_freshness_lag_sec = float(gate.get("max_freshness_lag_sec", 1800))
+        self.max_freshness_lag_sec = float(gate.get("max_freshness_lag_sec", 21600))
         self.min_new_item_count_30m = int(gate.get("min_new_item_count_30m", 1))
 
     def _load_config(self) -> Dict[str, Any]:
@@ -189,6 +253,19 @@ class CanarySourceHealth:
                 if delay > 0:
                     values.append(delay)
         return values or list(DEFAULT_RETRY_DELAYS_SEC)
+
+    def _effective_gate_settings(self) -> Dict[str, Any]:
+        gate = self.settings.get("gate", {}) or {}
+        if not isinstance(gate, dict):
+            return {}
+        overrides = gate.get("source_overrides", {}) or {}
+        if isinstance(overrides, dict):
+            source_override = overrides.get(self.source_id, {})
+            if isinstance(source_override, dict) and source_override:
+                merged = dict(gate)
+                merged.update(source_override)
+                return merged
+        return gate
 
     def _load_records(self, window_minutes: int = 60) -> List[Dict[str, Any]]:
         if not self.health_log_file.exists():

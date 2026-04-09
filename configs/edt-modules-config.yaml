@@ -627,8 +627,13 @@ canary_source_health:
   gate:
     min_success_rate_1h: 0.95
     max_p95_latency_ms: 3000
-    max_freshness_lag_sec: 100000
+    max_freshness_lag_sec: 21600
     min_new_item_count_30m: 1
+    source_overrides:
+      # Transitional override for the temporary NewsAPI live source.
+      # Remove once the final production canary source is swapped in.
+      newsapi_us_top_headlines:
+        max_freshness_lag_sec: 100000
 
   # ========== C层编排与审计模块 ==========
   OrchestratorNode:

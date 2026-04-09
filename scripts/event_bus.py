@@ -21,6 +21,7 @@ from websockets.exceptions import ConnectionClosed
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 DEFAULT_WS_TOKEN = os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")
+DEFAULT_RUNTIME_ROLE = os.getenv("EDT_RUNTIME_ROLE", "").strip().lower()
 
 
 @dataclass
@@ -62,10 +63,12 @@ class EventBus:
         port: int = 8765,
         auth_token: Optional[str] = None,
         history_file: Optional[str] = None,
+        runtime_role: Optional[str] = None,
     ):
         self.host = host
         self.port = port
         self.auth_token = auth_token if auth_token is not None else DEFAULT_WS_TOKEN
+        self.runtime_role = (runtime_role or DEFAULT_RUNTIME_ROLE or "dev").lower()
         self.history_file = Path(history_file) if history_file else None
         self.server = None
         self.clients: Dict[str, Any] = {}
@@ -128,10 +131,14 @@ class EventBus:
             self._cleanup_subscriptions(client_id)
 
     def _is_authorized_path(self, path: str) -> bool:
+        if self.runtime_role == "prod" and not self.auth_token:
+            return False
         if not self.auth_token:
             return True
         parsed = urlparse(path or "")
         token = parse_qs(parsed.query).get("token", [""])[0]
+        if not token:
+            return False
         return token == self.auth_token
     
     async def _process_message(self, client_id: str, message: str):

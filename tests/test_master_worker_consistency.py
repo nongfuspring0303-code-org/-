@@ -16,7 +16,7 @@ def _build_monitor(monkeypatch, role: str):
 
     monkeypatch.setattr(RealtimeNewsMonitor, "_load_news_module", _fake_load)
     monkeypatch.setenv("EDT_NODE_ROLE", role)
-    return RealtimeNewsMonitor(api_url="http://127.0.0.1:8787")
+    return RealtimeNewsMonitor(api_url="http://127.0.0.1:18787")
 
 
 def test_worker_does_not_publish_main_chain_events(monkeypatch):
@@ -38,4 +38,4 @@ def test_worker_push_is_skipped_without_network_call(monkeypatch):
     import urllib.request
 
     monkeypatch.setattr(urllib.request, "urlopen", _fail_urlopen)
-    monitor._push_to_c_module({"x": 1}, "http://127.0.0.1:8787")
+    monitor._push_to_c_module({"x": 1}, "http://127.0.0.1:18787")

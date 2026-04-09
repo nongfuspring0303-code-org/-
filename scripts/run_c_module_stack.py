@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import random
+import os
 from datetime import datetime, timezone
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -199,11 +200,11 @@ async def main():
     parser = argparse.ArgumentParser(description="Run C module local integration stack")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     parser.add_argument("--ws-host", default="127.0.0.1")
-    parser.add_argument("--ws-port", type=int, default=18765)
+    parser.add_argument("--ws-port", type=int, default=int(os.getenv("EDT_WS_PORT", "18765")))
     parser.add_argument("--api-host", default="127.0.0.1")
-    parser.add_argument("--api-port", type=int, default=18787)
+    parser.add_argument("--api-port", type=int, default=int(os.getenv("EDT_API_PORT", "18787")))
     parser.add_argument("--web-host", default="127.0.0.1")
-    parser.add_argument("--web-port", type=int, default=18080)
+    parser.add_argument("--web-port", type=int, default=int(os.getenv("EDT_WEB_PORT", "18080")))
     parser.add_argument("--interval", type=float, default=2.0)
     parser.add_argument("--role", choices=["dev", "staging", "prod"], default=None)
     parser.add_argument("--mock-mode", choices=["auto", "on", "off"], default=None)

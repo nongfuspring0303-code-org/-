@@ -91,18 +91,24 @@ function trimArray(arr, limit) {
 
 function bindNewsInteractions() {
   document.querySelectorAll('[data-news-id]').forEach((el) => {
+    if (el.dataset.boundClick === '1') return;
+    el.dataset.boundClick = '1';
     el.addEventListener('click', () => selectNews(el.dataset.newsId));
   });
 }
 
 function bindSectorInteractions() {
   document.querySelectorAll('[data-sector-name]').forEach((el) => {
+    if (el.dataset.boundClick === '1') return;
+    el.dataset.boundClick = '1';
     el.addEventListener('click', () => selectSector(el.dataset.sectorName));
   });
 }
 
 function bindOpportunityInteractions() {
   document.querySelectorAll('[data-opp-action]').forEach((el) => {
+    if (el.dataset.boundClick === '1') return;
+    el.dataset.boundClick = '1';
     el.addEventListener('click', () => handleAction(el.dataset.oppSymbol, el.dataset.oppAction));
   });
 }
@@ -111,6 +117,8 @@ function bindRiskModalInteractions() {
   const modal = document.getElementById('riskModalBody');
   if (!modal) return;
   modal.querySelectorAll('[data-risk-action]').forEach((el) => {
+    if (el.dataset.boundClick === '1') return;
+    el.dataset.boundClick = '1';
     el.addEventListener('click', () => {
       const symbol = el.dataset.riskSymbol || '';
       if (el.dataset.riskAction === 'close') {

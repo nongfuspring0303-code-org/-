@@ -19,6 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import yaml
 
 try:
     from googletrans import Translator
@@ -45,11 +46,28 @@ class RealtimeNewsMonitor:
         self.config_path = config_path or _default_config_path()
         self.poll_interval = poll_interval
         self.api_url = api_url or "http://127.0.0.1:8787"
+        self.node_role = self._load_node_role()
         self.last_news_signature = ""  # 用于检测新新闻
         self.translator = Translator() if Translator else None
         if not self.translator:
             logger.warning("⚠️ googletrans 不可用，中文翻译将跳过")
         self._load_news_module()
+
+    def _load_node_role(self) -> str:
+        env_role = os.getenv("EDT_NODE_ROLE", "").strip().lower()
+        if env_role:
+            return env_role
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                payload = yaml.safe_load(f) or {}
+            runtime = payload.get("runtime", {}) if isinstance(payload, dict) else {}
+            role = str(runtime.get("node_role", "master")).strip().lower()
+            return role or "master"
+        except Exception:
+            return "master"
+
+    def _can_publish_main_chain(self) -> bool:
+        return self.node_role != "worker"
     
     def _load_news_module(self):
         try:
@@ -104,8 +122,20 @@ class RealtimeNewsMonitor:
         """处理单条新闻，返回是否触发成功"""
         if not self.event_capture:
             return False
-        if news.get("metadata", {}).get("is_test_data"):
-            logger.warning("⚠️ 跳过测试数据，避免把fallback误当真实新闻触发")
+
+        metadata = news.get("metadata", {})
+        source_type = str(news.get("source_type", "")).lower()
+        if (
+            metadata.get("is_test_data")
+            or bool(news.get("is_test_data"))
+            or source_type in {"fallback", "failed"}
+        ):
+            logger.warning(
+                "⚠️ 跳过非实盘新闻，避免触发下游: source_type=%s metadata.is_test_data=%s is_test_data=%s",
+                source_type or "unknown",
+                bool(metadata.get("is_test_data")),
+                bool(news.get("is_test_data")),
+            )
             return False
         
         try:
@@ -175,6 +205,9 @@ class RealtimeNewsMonitor:
         """推送板块和机会到C模块"""
         if not self.api_url:
             return
+        if not self._can_publish_main_chain():
+            logger.info("⏭️ 当前节点为 worker，跳过主链推送")
+            return
         
         try:
             from datetime import datetime, timezone
@@ -243,6 +276,12 @@ class RealtimeNewsMonitor:
                 "severity": event_object.get("severity", "E3"),
                 "evidence_score": 0,
                 "narrative_state": "Fact-Driven",
+                "news_timestamp": (
+                    event_object.get("news_timestamp")
+                    or event_object.get("published_at")
+                    or event_object.get("detected_at")
+                    or event_object.get("timestamp")
+                ),
                 "timestamp": ts,
             }
             
@@ -287,6 +326,9 @@ class RealtimeNewsMonitor:
     
     def _push_to_c_module(self, data: Dict[str, Any], api_url: str):
         """推送到C模块"""
+        if not self._can_publish_main_chain():
+            logger.info("⏭️ 当前节点为 worker，跳过主链推送")
+            return
         try:
             import urllib.request
             
@@ -312,7 +354,7 @@ class RealtimeNewsMonitor:
         news_list = self._fetch_latest_news()
         
         if not news_list:
-            logger.info("📭 未获取到新闻")
+            logger.warning("📭 新闻摄取为空，已跳过下游触发")
             return False
         
         latest_news = news_list[0]

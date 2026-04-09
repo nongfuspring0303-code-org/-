@@ -244,6 +244,18 @@ class NewsIngestion(EDTModule):
                 continue
 
         if not items:
+            execution_mode = str(self._get_config("modules.ExecutionAdapter.params.mode", "dry_run")).lower()
+            if execution_mode == "live":
+                return ModuleOutput(
+                    status=ModuleStatus.FAILED,
+                    data={"items": []},
+                    errors=[
+                        {
+                            "code": "NEWS_SOURCE_UNAVAILABLE",
+                            "message": "News source fetch yielded no items in live mode.",
+                        }
+                    ],
+                )
             items = [
                 {
                     "headline": "Fed announces emergency liquidity action",
@@ -285,7 +297,7 @@ class NewsIngestion(EDTModule):
             "raw_text": item.get("raw_text", ""),
             "source_type": item.get("source_type", ""),
             "source_rank": source_rank,
-            "schema_version": item.get("schema_version", "ai_intel_v1"),
+            "schema_version": item.get("schema_version", "v1.0"),
             "producer": item.get("producer", "member-a"),
             "generated_at": item.get("generated_at", _now_iso()),
         }
@@ -327,7 +339,7 @@ class EventEvidenceScorer(EDTModule):
                 "confidence": confidence,
                 "narrative_state": narrative_state,
                 "reasoning": reasoning,
-                "schema_version": raw.get("schema_version", "ai_intel_v1"),
+                "schema_version": raw.get("schema_version", "v1.0"),
                 "producer": raw.get("producer", "member-a"),
                 "generated_at": raw.get("generated_at", _now_iso()),
             },

@@ -13,6 +13,8 @@ filters:
   liquidity_score_min: 0.60
 
 price_source: reference_snapshot
+# stock-level last_price below is static reference only;
+# runtime scoring should prefer candidate realtime_price when available.
 
 opportunity_rules:
   watch_score_threshold: 0.55

@@ -335,7 +335,7 @@ def check_pressure_gate() -> CheckResult:
     return result
 
 
-def check_phase3_evidence_ledger() -> CheckResult:
+def check_phase3_evidence_ledger(mode: str = "dev") -> CheckResult:
     ledger = Phase3EvidenceLedger()
     summary = ledger.read_summary()
     result = CheckResult(
@@ -363,7 +363,12 @@ def check_phase3_evidence_ledger() -> CheckResult:
         ]
     )
     if not summary.get("real_flow_evidence"):
-        result.warnings.append("No live pressure-gate records found; current evidence is replay-only.")
+        if mode == "prod":
+            result.status = "RED"
+            result.summary = "Production readiness requires live pressure-gate evidence."
+            result.errors.append("No live pressure-gate records found; replay-only evidence is insufficient in prod mode.")
+        else:
+            result.warnings.append("No live pressure-gate records found; current evidence is replay-only.")
 
     return result
 
@@ -476,7 +481,7 @@ def build_stage(name: str, summary: str, checks: list[CheckResult]) -> StageResu
     )
 
 
-def run_project_checks() -> list[CheckResult]:
+def run_project_checks(mode: str = "dev") -> list[CheckResult]:
     return [
         check_env(),
         check_config(),
@@ -484,7 +489,7 @@ def run_project_checks() -> list[CheckResult]:
         check_contract(),
         check_test_runtime(),
         check_pressure_gate(),
-        check_phase3_evidence_ledger(),
+        check_phase3_evidence_ledger(mode=mode),
         check_recovery(),
     ]
 
@@ -493,6 +498,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run health-system self-check and project-wide health checks.")
     parser.add_argument("--self-heal", action="store_true", help="Attempt self-heal between self-check and project checks.")
     parser.add_argument("--self-only", action="store_true", help="Only run health-system self-check stages.")
+    parser.add_argument("--mode", choices=["dev", "prod"], default="dev", help="Healthcheck strictness mode.")
     args = parser.parse_args()
 
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -510,7 +516,7 @@ def main() -> int:
     stage_project = StageResult(name="PROJECT_CHECK", status="SKIP", summary="Project-wide health check skipped.")
     project_checks: list[CheckResult] = []
     if not args.self_only:
-        project_checks = run_project_checks()
+        project_checks = run_project_checks(mode=args.mode)
         stage_project = build_stage("PROJECT_CHECK", "Project-wide health check after health-system validation.", project_checks)
 
     stage_statuses = [stage_self_check.status, stage_self_recheck.status]
@@ -527,6 +533,7 @@ def main() -> int:
         "python": sys.version,
         "self_heal": args.self_heal,
         "self_only": args.self_only,
+        "mode": args.mode,
         "stages": [
             asdict(stage_self_check),
             asdict(stage_self_heal),

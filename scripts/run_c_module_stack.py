@@ -20,6 +20,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 import sys
+import yaml
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
@@ -29,6 +30,50 @@ if str(PROJECT_ROOT) not in sys.path:
 from scripts.config_api_server import create_server
 from scripts.event_bus import EventBus
 from scripts.health_monitor import HealthMonitor
+
+
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "edt-modules-config.yaml"
+
+
+def load_runtime_config(config_path: Path) -> dict:
+    try:
+        payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        raise ValueError(f"Invalid runtime config: {config_path} ({exc})") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Invalid runtime config root type: expected mapping, got {type(payload).__name__}")
+    return payload.get("runtime", {}) or {}
+
+
+def resolve_mock_producer_enabled(
+    role: str,
+    mode: str,
+    allow_non_dev_mock: bool,
+    disable_mock: bool,
+) -> bool:
+    if disable_mock or mode == "off":
+        return False
+    if mode == "on":
+        if role != "dev" and not allow_non_dev_mock:
+            raise ValueError("Mock producer is dev-only by default. Use --allow-non-dev-mock for non-dev role.")
+        return True
+    return role == "dev"
+
+
+def validate_mock_mode(mode: str) -> str:
+    normalized = str(mode or "auto").strip().lower()
+    if normalized not in {"auto", "on", "off"}:
+        raise ValueError(f"Invalid mock_mode '{mode}'. Allowed: auto|on|off")
+    return normalized
+
+
+def resolve_history_file_path(history_file: str | None) -> str | None:
+    if not history_file:
+        return None
+    path = Path(history_file)
+    if path.is_absolute():
+        return str(path)
+    return str((PROJECT_ROOT / path).resolve())
 
 
 
@@ -152,6 +197,7 @@ async def mock_producer(bus: EventBus, monitor: HealthMonitor, interval_sec: flo
 
 async def main():
     parser = argparse.ArgumentParser(description="Run C module local integration stack")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     parser.add_argument("--ws-host", default="127.0.0.1")
     parser.add_argument("--ws-port", type=int, default=18765)
     parser.add_argument("--api-host", default="127.0.0.1")
@@ -159,10 +205,28 @@ async def main():
     parser.add_argument("--web-host", default="127.0.0.1")
     parser.add_argument("--web-port", type=int, default=18080)
     parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--role", choices=["dev", "staging", "prod"], default=None)
+    parser.add_argument("--mock-mode", choices=["auto", "on", "off"], default=None)
+    parser.add_argument("--allow-non-dev-mock", action="store_true")
+    parser.add_argument("--history-file", default=None, help="jsonl history file path for EventBus")
     parser.add_argument("--no-mock", action="store_true", help="disable mock producer, wait for A/B ingest")
     args = parser.parse_args()
 
-    bus = EventBus(host=args.ws_host, port=args.ws_port)
+    runtime_cfg = load_runtime_config(Path(args.config))
+    stack_cfg = runtime_cfg.get("c_module_stack", {}) or {}
+    mock_cfg = stack_cfg.get("mock_producer", {}) or {}
+
+    role = args.role or runtime_cfg.get("role") or "dev"
+    mock_mode = validate_mock_mode(args.mock_mode or mock_cfg.get("default_mode") or "auto")
+    allow_non_dev_mock = args.allow_non_dev_mock or bool(mock_cfg.get("allow_non_dev", False))
+    history_file = resolve_history_file_path(args.history_file or stack_cfg.get("history_file"))
+
+    try:
+        enable_mock = resolve_mock_producer_enabled(role, mock_mode, allow_non_dev_mock, args.no_mock)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    bus = EventBus(host=args.ws_host, port=args.ws_port, history_file=history_file)
     monitor = HealthMonitor(base_dir=str(PROJECT_ROOT))
 
     loop = asyncio.get_running_loop()
@@ -184,11 +248,13 @@ async def main():
     print(f"- Config:    http://{args.web_host}:{args.web_port}/canvas/config.html")
     print(f"- Monitor:   http://{args.web_host}:{args.web_port}/canvas/monitor.html")
     print("- Ingest:    POST /api/ingest/{event-update|sector-update|opportunity-update}")
+    print(f"- Role:      {role}")
+    print(f"- Mock:      {'enabled' if enable_mock else 'disabled'} ({mock_mode})")
     print("Press Ctrl+C to stop.")
 
     bus_task = asyncio.create_task(bus.start())
     producer_task = None
-    if not args.no_mock:
+    if enable_mock:
         producer_task = asyncio.create_task(mock_producer(bus, monitor, args.interval))
 
     try:

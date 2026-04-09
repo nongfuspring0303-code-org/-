@@ -29,6 +29,45 @@ def _norm_sector(name: Any) -> str:
     return str(name or "").strip().lower()
 
 
+class SectorAliasResolver:
+    """Loads configurable sector alias dictionary and resolves canonical names."""
+
+    def __init__(self, alias_config_path: Optional[str] = None):
+        self.alias_config_path = Path(alias_config_path) if alias_config_path else _root_dir() / "configs" / "sector_aliases.yaml"
+        self._alias_to_canonical = self._load_aliases(self.alias_config_path)
+
+    @staticmethod
+    def _load_yaml(path: Path) -> Dict[str, Any]:
+        if not path.exists():
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    def _load_aliases(self, path: Path) -> Dict[str, str]:
+        cfg = self._load_yaml(path)
+        aliases = cfg.get("aliases", {})
+        if not isinstance(aliases, dict):
+            return {}
+        out: Dict[str, str] = {}
+        for canonical, values in aliases.items():
+            canonical_name = str(canonical or "").strip()
+            if not canonical_name:
+                continue
+            out[_norm_sector(canonical_name)] = canonical_name
+            if isinstance(values, list):
+                for alias in values:
+                    alias_name = str(alias or "").strip()
+                    if alias_name:
+                        out[_norm_sector(alias_name)] = canonical_name
+        return out
+
+    def canonical(self, name: Any) -> str:
+        raw = str(name or "").strip()
+        if not raw:
+            return ""
+        return self._alias_to_canonical.get(_norm_sector(raw), raw)
+
+
 @dataclass
 class PremiumStock:
     symbol: str
@@ -46,11 +85,15 @@ class PremiumStockPool:
 
     def __init__(self, pool_config_path: Optional[str] = None):
         self.pool_config_path = Path(pool_config_path) if pool_config_path else _root_dir() / "configs" / "premium_stock_pool.yaml"
+        self.sector_aliases = SectorAliasResolver()
         self._cfg = self._load_yaml(self.pool_config_path)
         self.filters = self._cfg.get("filters", {})
         self.rules = self._cfg.get("opportunity_rules", {})
         self.price_source = str(self._cfg.get("price_source", "reference_snapshot"))
         self._stocks_by_symbol = self._build_stock_index(self._cfg.get("stocks", []))
+
+    def canonical_sector(self, name: Any) -> str:
+        return self.sector_aliases.canonical(name)
 
     @staticmethod
     def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -92,8 +135,12 @@ class PremiumStockPool:
         return self._stocks_by_symbol.get(str(symbol).strip().upper())
 
     def pick_by_sector(self, sector_name: str, limit: Optional[int] = None) -> List[PremiumStock]:
-        norm = _norm_sector(sector_name)
-        selected = [s for s in self._stocks_by_symbol.values() if _norm_sector(s.sector) == norm and self._pass_thresholds(s)]
+        norm = _norm_sector(self.canonical_sector(sector_name))
+        selected = [
+            s
+            for s in self._stocks_by_symbol.values()
+            if _norm_sector(self.canonical_sector(s.sector)) == norm and self._pass_thresholds(s)
+        ]
         selected.sort(key=lambda x: (x.liquidity_score, x.market_cap_billion), reverse=True)
         if limit is None:
             return selected
@@ -191,6 +238,12 @@ class OpportunityScorer:
             return ""
         return self._normalize_direction(candidate.get("direction"))
 
+    def _candidate_realtime_price(self, candidate: Dict[str, Any]) -> Optional[float]:
+        price = self._safe_float(candidate.get("realtime_price"), 0.0)
+        if price <= 0:
+            return None
+        return price
+
     def _build_opportunity(
         self,
         trace_id: str,
@@ -216,8 +269,13 @@ class OpportunityScorer:
             target_signal = sector_direction
 
         candidate_direction = self._candidate_direction(candidate)
+        realtime_price = self._candidate_realtime_price(candidate)
         risk_flags = self._build_risk_flags(stock, score, sector_confidence, candidate_direction, target_signal)
+        if realtime_price is None:
+            risk_flags.append({"type": "price_data", "level": "high", "description": "缺少实时价格，需等待行情刷新"})
         final_action = self._resolve_action(target_signal, risk_flags)
+        if realtime_price is None:
+            final_action = "WATCH"
 
         reasoning = f"{sector_name}方向{sector_direction}，综合评分{score:.2f}"
         if len(reasoning) > 50:
@@ -229,9 +287,9 @@ class OpportunityScorer:
             "name": stock.name,
             "sector": sector_name,
             "signal": target_signal,
-            "entry_zone": self._build_entry_zone(stock.last_price),
-            "price_source": stock.price_source,
-            "needs_price_refresh": stock.price_source != "live",
+            "entry_zone": self._build_entry_zone(realtime_price if realtime_price is not None else stock.last_price),
+            "price_source": "live" if realtime_price is not None else stock.price_source,
+            "needs_price_refresh": realtime_price is None,
             "risk_flags": risk_flags,
             "final_action": final_action,
             "reasoning": reasoning,
@@ -248,7 +306,7 @@ class OpportunityScorer:
         stock_candidates = payload.get("stock_candidates", [])
         candidates_by_sector: Dict[str, List[Dict[str, Any]]] = {}
         for cand in stock_candidates:
-            key = _norm_sector(cand.get("sector", ""))
+            key = _norm_sector(self.pool.canonical_sector(cand.get("sector", "")))
             candidates_by_sector.setdefault(key, []).append(cand)
 
         max_per_sector = int(self.pool.rules.get("max_candidates_per_sector", 5))
@@ -256,7 +314,7 @@ class OpportunityScorer:
 
         for sector in sectors:
             sector_name = str(sector.get("name", "未知板块"))
-            norm_sector = _norm_sector(sector_name)
+            norm_sector = _norm_sector(self.pool.canonical_sector(sector_name))
             sector_direction = self._normalize_direction(sector.get("direction", "WATCH"))
             impact_score = self._safe_float(sector.get("impact_score", 0.0), 0.0)
             sector_conf = self._safe_float(sector.get("confidence", 0.0), 0.0)

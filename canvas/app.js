@@ -251,6 +251,7 @@ function handleEventUpdate(payload, options = {}) {
     headline_cn: payload.headline_cn,
     source: payload.source,
     severity: payload.severity || 'E2',
+    news_timestamp: payload.news_timestamp || payload.published_at || payload.news_time || null,
     timestamp: payload.timestamp,
     schema_version: payload.schema_version,
   };
@@ -368,7 +369,7 @@ function renderNews() {
         <span class="news-source">${escapeHtml(news.source)}</span>
         <span class="news-severity severity-${escapeHtml(news.severity)}">${escapeHtml(news.severity)}</span>
       </div>
-      <div class="news-time">${escapeHtml(formatTimestamp(news.timestamp))}</div>
+      <div class="news-time">新闻: ${escapeHtml(formatTimestamp(news.news_timestamp || news.timestamp))} | 推送: ${escapeHtml(formatTimestamp(news.timestamp))}</div>
       <div class="news-headline">${escapeHtml(news.headline || '')}</div>
       ${news.headline_cn ? `<div class="news-headline-cn">${escapeHtml(news.headline_cn)}</div>` : ''}
       <div class="trace-id">${escapeHtml(news.id)}</div>

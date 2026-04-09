@@ -630,3 +630,15 @@ modules:
     params:
       schema_version: "1.0.0"
       producer: "EDT-System"
+
+runtime:
+  role: "dev"
+  node_role: "master"
+  semantic:
+    enabled: false
+    min_confidence: 70
+  c_module_stack:
+    history_file: "logs/event_bus_history.jsonl"
+    mock_producer:
+      default_mode: "auto"
+      allow_non_dev: false

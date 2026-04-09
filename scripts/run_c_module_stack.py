@@ -20,6 +20,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
 import sys
+import yaml
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
@@ -29,6 +30,30 @@ if str(PROJECT_ROOT) not in sys.path:
 from scripts.config_api_server import create_server
 from scripts.event_bus import EventBus
 from scripts.health_monitor import HealthMonitor
+
+
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "configs" / "edt-modules-config.yaml"
+
+
+def load_runtime_config(config_path: Path) -> dict:
+    try:
+        payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:
+        raise ValueError(f"Invalid runtime config: {config_path} ({exc})") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Invalid runtime config root type: expected mapping, got {type(payload).__name__}")
+    return payload.get("runtime", {}) or {}
+
+
+def resolve_history_file(runtime_cfg: dict) -> str | None:
+    stack_cfg = runtime_cfg.get("c_module_stack", {}) if isinstance(runtime_cfg, dict) else {}
+    history_file = stack_cfg.get("history_file")
+    if not history_file:
+        return None
+    path = Path(history_file)
+    if path.is_absolute():
+        return str(path)
+    return str((PROJECT_ROOT / path).resolve())
 
 
 
@@ -152,6 +177,7 @@ async def mock_producer(bus: EventBus, monitor: HealthMonitor, interval_sec: flo
 
 async def main():
     parser = argparse.ArgumentParser(description="Run C module local integration stack")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     parser.add_argument("--ws-host", default="127.0.0.1")
     parser.add_argument("--ws-port", type=int, default=18765)
     parser.add_argument("--api-host", default="127.0.0.1")
@@ -162,7 +188,11 @@ async def main():
     parser.add_argument("--no-mock", action="store_true", help="disable mock producer, wait for A/B ingest")
     args = parser.parse_args()
 
-    bus = EventBus(host=args.ws_host, port=args.ws_port)
+    runtime_cfg = load_runtime_config(Path(args.config))
+    node_role = str(os.getenv("EDT_NODE_ROLE", runtime_cfg.get("node_role", "master"))).strip().lower() or "master"
+    history_file = resolve_history_file(runtime_cfg)
+
+    bus = EventBus(host=args.ws_host, port=args.ws_port, history_file=history_file)
     monitor = HealthMonitor(base_dir=str(PROJECT_ROOT))
 
     loop = asyncio.get_running_loop()
@@ -184,11 +214,12 @@ async def main():
     print(f"- Config:    http://{args.web_host}:{args.web_port}/canvas/config.html")
     print(f"- Monitor:   http://{args.web_host}:{args.web_port}/canvas/monitor.html")
     print("- Ingest:    POST /api/ingest/{event-update|sector-update|opportunity-update}")
+    print(f"- NodeRole:  {node_role}")
     print("Press Ctrl+C to stop.")
 
     bus_task = asyncio.create_task(bus.start())
     producer_task = None
-    if not args.no_mock:
+    if not args.no_mock and node_role != "worker":
         producer_task = asyncio.create_task(mock_producer(bus, monitor, args.interval))
 
     try:

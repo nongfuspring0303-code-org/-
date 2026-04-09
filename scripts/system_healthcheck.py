@@ -41,6 +41,7 @@ except Exception as exc:  # noqa: BLE001
     raise SystemExit(2)
 
 from phase3_evidence_ledger import Phase3EvidenceLedger
+from data_adapter import DataAdapter
 
 
 STATUS_ORDER = {"GREEN": 0, "YELLOW": 1, "RED": 2}
@@ -368,6 +369,39 @@ def check_phase3_evidence_ledger() -> CheckResult:
     return result
 
 
+def check_external_data_health(mode: str = "dev") -> CheckResult:
+    adapter = DataAdapter()
+    payload = adapter.fetch()
+    health = adapter.health_report()
+
+    news = payload.get("news", {})
+    market = payload.get("market_data", {})
+    result = CheckResult(
+        name="DATA_HEALTH",
+        status="GREEN",
+        summary="External data health snapshot recorded.",
+    )
+    result.evidence.extend(
+        [
+            f"total_fetches={health.get('total_fetches', 0)}",
+            f"live_news_count={health.get('live_news_count', 0)}",
+            f"fallback_news_count={health.get('fallback_news_count', 0)}",
+            f"market_test_count={health.get('market_test_count', 0)}",
+            f"live_news_ratio={health.get('live_news_ratio', 0)}",
+            f"news_source_type={news.get('source_type', 'unknown')}",
+            f"market_source={market.get('market_data_source', 'unknown')}",
+        ]
+    )
+    if health.get("live_news_count", 0) <= 0:
+        if mode == "prod":
+            result.status = "RED"
+            result.summary = "Production mode requires live external data evidence."
+            result.errors.append("No live external news samples recorded.")
+        else:
+            result.warnings.append("External data health is replay/fallback only in the current environment.")
+    return result
+
+
 def check_recovery() -> CheckResult:
     result = CheckResult(name="RECOVERY", status="GREEN", summary="Health system self-check and recovery entrypoints are present.")
     required = [
@@ -476,7 +510,7 @@ def build_stage(name: str, summary: str, checks: list[CheckResult]) -> StageResu
     )
 
 
-def run_project_checks() -> list[CheckResult]:
+def run_project_checks(mode: str = "dev") -> list[CheckResult]:
     return [
         check_env(),
         check_config(),
@@ -485,6 +519,7 @@ def run_project_checks() -> list[CheckResult]:
         check_test_runtime(),
         check_pressure_gate(),
         check_phase3_evidence_ledger(),
+        check_external_data_health(mode=mode),
         check_recovery(),
     ]
 
@@ -493,6 +528,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run health-system self-check and project-wide health checks.")
     parser.add_argument("--self-heal", action="store_true", help="Attempt self-heal between self-check and project checks.")
     parser.add_argument("--self-only", action="store_true", help="Only run health-system self-check stages.")
+    parser.add_argument("--mode", choices=["dev", "prod"], default="dev", help="Healthcheck strictness mode.")
     args = parser.parse_args()
 
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -510,7 +546,7 @@ def main() -> int:
     stage_project = StageResult(name="PROJECT_CHECK", status="SKIP", summary="Project-wide health check skipped.")
     project_checks: list[CheckResult] = []
     if not args.self_only:
-        project_checks = run_project_checks()
+        project_checks = run_project_checks(mode=args.mode)
         stage_project = build_stage("PROJECT_CHECK", "Project-wide health check after health-system validation.", project_checks)
 
     stage_statuses = [stage_self_check.status, stage_self_recheck.status]

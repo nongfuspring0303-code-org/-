@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from statistics import mean
 import urllib.request
 
 try:
@@ -25,10 +26,14 @@ except ImportError:
 class DataAdapter:
     """数据接入适配器（真实新闻流优先 + 模拟兜底）"""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None, audit_dir: Optional[str] = None):
         self.cache = CacheManager() if CacheManager else None
         self.config_path = config_path
         self.config = self._load_config(config_path)
+        self.audit_dir = Path(audit_dir) if audit_dir else Path(__file__).resolve().parent.parent / "logs"
+        self.audit_dir.mkdir(parents=True, exist_ok=True)
+        self.health_log_file = self.audit_dir / "data_health.jsonl"
+        self.health_summary_file = self.audit_dir / "data_health_summary.json"
 
     def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
         if not yaml:
@@ -62,6 +67,75 @@ class DataAdapter:
                 return json.loads(resp.read().decode("utf-8", errors="replace"))
         except Exception:
             return None
+
+    def _record_health_snapshot(self, snapshot: Dict[str, Any]) -> None:
+        try:
+            self.audit_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.health_log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+            self.write_health_summary()
+        except Exception:
+            logging.debug("Failed to persist data health snapshot", exc_info=True)
+
+    def _load_health_records(self, window_days: int = 30) -> List[Dict[str, Any]]:
+        if not self.health_log_file.exists():
+            return []
+        cutoff = datetime.now(timezone.utc).timestamp() - (window_days * 86400)
+        rows: List[Dict[str, Any]] = []
+        with open(self.health_log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts = row.get("created_at", "")
+                try:
+                    created = datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    continue
+                if created >= cutoff:
+                    rows.append(row)
+        return rows
+
+    def health_report(self, window_days: int = 30) -> Dict[str, Any]:
+        records = self._load_health_records(window_days=window_days)
+        total_fetches = len(records)
+        live_news_count = sum(1 for row in records if not row.get("news_is_test_data") and row.get("news_source_type") not in {"", "fallback"})
+        fallback_news_count = sum(1 for row in records if row.get("news_source_type") == "fallback" or row.get("news_is_test_data"))
+        market_test_count = sum(1 for row in records if row.get("market_is_test_data"))
+        sector_counts = [int(row.get("sector_count", 0) or 0) for row in records]
+        live_ratio = round(live_news_count / total_fetches, 4) if total_fetches else 0.0
+
+        report = {
+            "schema_version": "v1.0",
+            "window_days": window_days,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "total_fetches": total_fetches,
+            "live_news_count": live_news_count,
+            "fallback_news_count": fallback_news_count,
+            "market_test_count": market_test_count,
+            "live_news_ratio": live_ratio,
+            "avg_sector_count": round(mean(sector_counts), 2) if sector_counts else 0.0,
+            "last_record": records[-1] if records else {},
+        }
+        return report
+
+    def write_health_summary(self, window_days: int = 30) -> Dict[str, Any]:
+        report = self.health_report(window_days=window_days)
+        with open(self.health_summary_file, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        return report
+
+    def read_health_summary(self) -> Dict[str, Any]:
+        if not self.health_summary_file.exists():
+            return self.write_health_summary()
+        try:
+            return json.loads(self.health_summary_file.read_text(encoding="utf-8"))
+        except Exception:
+            return self.write_health_summary()
 
     def fetch_news(self) -> Dict[str, Any]:
         try:
@@ -162,6 +236,15 @@ class DataAdapter:
 
         if self.cache:
             self.cache.run({"action": "set", "key": key, "value": payload, "ttl_seconds": 300})
+        self._record_health_snapshot(
+            {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "news_source_type": payload["news"].get("source_type", ""),
+                "news_is_test_data": bool(payload["news"].get("metadata", {}).get("is_test_data")),
+                "market_is_test_data": bool(payload["market_data"].get("is_test_data")),
+                "sector_count": len(payload["sector_data"]),
+            }
+        )
         return payload
 
 

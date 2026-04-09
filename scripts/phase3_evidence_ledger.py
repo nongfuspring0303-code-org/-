@@ -66,6 +66,7 @@ class Phase3EvidenceLedger:
         self.audit_dir.mkdir(parents=True, exist_ok=True)
         self.ledger_file = self.audit_dir / "phase3_evidence.jsonl"
         self.summary_file = self.audit_dir / "phase3_evidence_summary.json"
+        self.report_file = self.audit_dir / "phase3_evidence_report.json"
 
     def append_pressure_run(
         self,
@@ -153,6 +154,7 @@ class Phase3EvidenceLedger:
         summary = self.summarize(window_days=window_days)
         with open(self.summary_file, "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
+        self.write_report(window_days=window_days, summary=summary)
         return summary
 
     def read_summary(self) -> Dict[str, Any]:
@@ -162,6 +164,35 @@ class Phase3EvidenceLedger:
             return json.loads(self.summary_file.read_text(encoding="utf-8"))
         except Exception:
             return self.write_summary()
+
+    def build_report(self, window_days: int = 30, summary: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        summary = summary or self.summarize(window_days=window_days)
+        return {
+            "schema_version": "v1.0",
+            "window_days": window_days,
+            "generated_at": _now_iso(),
+            "summary": summary,
+            "live_vs_replay": {
+                "live_run_count": summary.get("live_run_count", 0),
+                "replay_run_count": summary.get("replay_run_count", 0),
+                "real_flow_evidence": summary.get("real_flow_evidence", False),
+            },
+            "recent_last_record": summary.get("last_record", {}),
+        }
+
+    def write_report(self, window_days: int = 30, summary: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        report = self.build_report(window_days=window_days, summary=summary)
+        with open(self.report_file, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        return report
+
+    def read_report(self) -> Dict[str, Any]:
+        if not self.report_file.exists():
+            return self.write_report()
+        try:
+            return json.loads(self.report_file.read_text(encoding="utf-8"))
+        except Exception:
+            return self.write_report()
 
 
 if __name__ == "__main__":

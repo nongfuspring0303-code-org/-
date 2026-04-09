@@ -113,3 +113,20 @@ def test_push_event_update_uses_detected_at_as_news_timestamp(monkeypatch):
     event_posts = [payload for url, payload in captured_posts if url.endswith("/api/ingest/event-update")]
     assert len(event_posts) == 1
     assert event_posts[0]["news_timestamp"] == "2026-04-08T18:00:00Z"
+
+
+def test_worker_node_skips_main_chain_push(monkeypatch):
+    monitor = RealtimeNewsMonitor()
+    monitor.node_role = "worker"
+
+    called = {"value": False}
+
+    def boom(*args, **kwargs):  # pragma: no cover - should not be reached
+        called["value"] = True
+        raise AssertionError("urlopen should not be called for worker nodes")
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+
+    monitor._push_sectors_to_c({"analysis": {}, "intel": {}})
+
+    assert called["value"] is False

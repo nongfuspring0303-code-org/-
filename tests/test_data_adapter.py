@@ -87,3 +87,16 @@ def test_fetch_market_data_returns_failed_shape_on_partial_success(monkeypatch):
     assert out["is_test_data"] is True
     assert out["vix_level"] is None
     assert out["spx_change_pct"] is None
+
+
+def test_data_adapter_health_report_records_snapshots(tmp_path):
+    adapter = DataAdapter(audit_dir=str(tmp_path))
+    adapter.fetch()
+    adapter.fetch()
+
+    report = adapter.health_report()
+    assert report["total_fetches"] >= 2
+    assert "live_news_count" in report
+    assert "fallback_news_count" in report
+    assert (tmp_path / "data_health.jsonl").exists()
+    assert (tmp_path / "data_health_summary.json").exists()

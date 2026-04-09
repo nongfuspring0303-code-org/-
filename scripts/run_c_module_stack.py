@@ -68,7 +68,10 @@ def validate_mock_mode(mode: str) -> str:
     return normalized
 
 
-def resolve_history_file_path(history_file: str | None) -> str | None:
+def resolve_history_file(runtime_cfg: dict, history_file: str | None = None) -> str | None:
+    if not history_file:
+        stack_cfg = runtime_cfg.get("c_module_stack", {}) if isinstance(runtime_cfg, dict) else {}
+        history_file = stack_cfg.get("history_file")
     if not history_file:
         return None
     path = Path(history_file)
@@ -218,9 +221,10 @@ async def main():
     mock_cfg = stack_cfg.get("mock_producer", {}) or {}
 
     role = args.role or runtime_cfg.get("role") or "dev"
+    node_role = str(os.getenv("EDT_NODE_ROLE", runtime_cfg.get("node_role", "master"))).strip().lower() or "master"
     mock_mode = validate_mock_mode(args.mock_mode or mock_cfg.get("default_mode") or "auto")
     allow_non_dev_mock = args.allow_non_dev_mock or bool(mock_cfg.get("allow_non_dev", False))
-    history_file = resolve_history_file_path(args.history_file or stack_cfg.get("history_file"))
+    history_file = resolve_history_file(runtime_cfg, args.history_file or stack_cfg.get("history_file"))
 
     try:
         enable_mock = resolve_mock_producer_enabled(role, mock_mode, allow_non_dev_mock, args.no_mock)
@@ -250,12 +254,13 @@ async def main():
     print(f"- Monitor:   http://{args.web_host}:{args.web_port}/canvas/monitor.html")
     print("- Ingest:    POST /api/ingest/{event-update|sector-update|opportunity-update}")
     print(f"- Role:      {role}")
+    print(f"- NodeRole:  {node_role}")
     print(f"- Mock:      {'enabled' if enable_mock else 'disabled'} ({mock_mode})")
     print("Press Ctrl+C to stop.")
 
     bus_task = asyncio.create_task(bus.start())
     producer_task = None
-    if enable_mock:
+    if enable_mock and node_role != "worker":
         producer_task = asyncio.create_task(mock_producer(bus, monitor, args.interval))
 
     try:

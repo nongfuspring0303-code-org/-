@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 DEFAULT_WS_TOKEN = os.getenv("EDT_WS_TOKEN", "edt-local-dev-token")
 DEFAULT_RUNTIME_ROLE = os.getenv("EDT_RUNTIME_ROLE", "").strip().lower()
+DEFAULT_EVENT_BUS_HISTORY_FILE = Path(__file__).resolve().parent.parent / "logs" / "event_bus_history.jsonl"
 
 
 @dataclass
@@ -79,6 +80,9 @@ class EventBus:
         self.handlers: Dict[str, Callable] = {}
         self._running = False
         self._history_loaded = False
+        if not self.history_file:
+            self.history_file = DEFAULT_EVENT_BUS_HISTORY_FILE
+        self.history_file.parent.mkdir(parents=True, exist_ok=True)
         self._load_persisted_history()
         
     async def start(self):

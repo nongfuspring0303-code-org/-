@@ -41,6 +41,7 @@ except Exception as exc:  # noqa: BLE001
     raise SystemExit(2)
 
 from phase3_evidence_ledger import Phase3EvidenceLedger
+from data_adapter import DataAdapter
 
 
 STATUS_ORDER = {"GREEN": 0, "YELLOW": 1, "RED": 2}
@@ -373,6 +374,39 @@ def check_phase3_evidence_ledger(mode: str = "dev") -> CheckResult:
     return result
 
 
+def check_external_data_health(mode: str = "dev") -> CheckResult:
+    adapter = DataAdapter()
+    payload = adapter.fetch()
+    health = adapter.health_report()
+
+    news = payload.get("news", {})
+    market = payload.get("market_data", {})
+    result = CheckResult(
+        name="DATA_HEALTH",
+        status="GREEN",
+        summary="External data health snapshot recorded.",
+    )
+    result.evidence.extend(
+        [
+            f"total_fetches={health.get('total_fetches', 0)}",
+            f"live_news_count={health.get('live_news_count', 0)}",
+            f"fallback_news_count={health.get('fallback_news_count', 0)}",
+            f"market_test_count={health.get('market_test_count', 0)}",
+            f"live_news_ratio={health.get('live_news_ratio', 0)}",
+            f"news_source_type={news.get('source_type', 'unknown')}",
+            f"market_source={market.get('market_data_source', 'unknown')}",
+        ]
+    )
+    if health.get("live_news_count", 0) <= 0:
+        if mode == "prod":
+            result.status = "RED"
+            result.summary = "Production mode requires live external data evidence."
+            result.errors.append("No live external news samples recorded.")
+        else:
+            result.warnings.append("External data health is replay/fallback only in the current environment.")
+    return result
+
+
 def check_recovery() -> CheckResult:
     result = CheckResult(name="RECOVERY", status="GREEN", summary="Health system self-check and recovery entrypoints are present.")
     required = [
@@ -490,6 +524,7 @@ def run_project_checks(mode: str = "dev") -> list[CheckResult]:
         check_test_runtime(),
         check_pressure_gate(),
         check_phase3_evidence_ledger(mode=mode),
+        check_external_data_health(mode=mode),
         check_recovery(),
     ]
 

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Feature-flagged semantic analyzer with deterministic fallback."""
+"""Feature-flagged semantic analyzer with GLM-4.7 Flash API support."""
 
 from __future__ import annotations
 
+import json
+import os
 import time
 from typing import Any, Dict
 
+import requests
 from config_center import ConfigCenter
+
+ZAI_API_KEY = "02d375ac9afd403e86a41c06d3049e4f.2IgpJFObuBFlNFH7"
+ZAI_BASE_URL = "https://api.z.ai/api/paas/v4"
 
 
 class SemanticAnalyzer:
@@ -104,9 +110,13 @@ class SemanticAnalyzer:
         model: str,
         timeout_ms: int,
     ) -> Dict[str, Any]:
-        _ = (provider, model, timeout_ms)
-        text = f"{headline} {raw_text}".lower()
-        if any(k in text for k in ["trade meeting", "trade talks", "贸易会议", "贸易谈判", "谈判"]):
+        text = f"{headline} {raw_text}"
+
+        if provider in ("glm_4", "glm-4.7-flash", "glm-4.7", "gemini_flash_lite") or model:
+            return self._call_glm_api(text, timeout_ms)
+
+        text_lower = text.lower()
+        if any(k in text_lower for k in ["trade meeting", "trade talks", "贸易会议", "贸易谈判", "谈判"]):
             return {
                 "event_type": "trade_talks",
                 "sentiment": "neutral",
@@ -114,7 +124,7 @@ class SemanticAnalyzer:
                 "recommended_chain": "trade_talks_chain",
                 "reason": "deterministic keyword match",
             }
-        if any(k in text for k in ["tariff", "trade war", "关税", "贸易战"]):
+        if any(k in text_lower for k in ["tariff", "trade war", "关税", "贸易战"]):
             return {
                 "event_type": "tariff",
                 "sentiment": "negative",
@@ -129,6 +139,96 @@ class SemanticAnalyzer:
             "recommended_chain": "",
             "reason": "deterministic fallback",
         }
+
+    def _call_glm_api(self, text: str, timeout_ms: int) -> Dict[str, Any]:
+        prompt = f"""你是一个金融新闻语义分析专家。请分析以下新闻标题和内容，判断其是否可能触发交易机会。
+
+新闻内容：{text}
+
+请返回一个JSON格式的分析结果，包含以下字段：
+- event_type: 事件类型（如：earnings, product_launch, regulatory, merger_acquisition, trade_talks, tariff, etc.）
+- sentiment: 情绪（positive/negative/neutral）
+- confidence: 置信度（0-100的整数）
+- recommended_chain: 推荐的应对链名称（如果有）
+- reason: 判断理由
+
+如果新闻内容不足以做出判断，请返回confidence为0并说明原因。"""
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {ZAI_API_KEY}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "glm-4.7-flash",
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 500,
+            }
+            timeout_seconds = timeout_ms / 1000.0
+            response = requests.post(
+                f"{ZAI_BASE_URL}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=timeout_seconds,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if "choices" in result and len(result["choices"]) > 0:
+                content = result["choices"][0]["message"]["content"]
+                try:
+                    parsed = json.loads(content)
+                    return {
+                        "event_type": parsed.get("event_type", "unknown"),
+                        "sentiment": parsed.get("sentiment", "neutral"),
+                        "confidence": parsed.get("confidence", 50),
+                        "recommended_chain": parsed.get("recommended_chain", ""),
+                        "reason": parsed.get("reason", "glm-4.7-flash api response"),
+                    }
+                except json.JSONDecodeError:
+                    return {
+                        "event_type": "unknown",
+                        "sentiment": "neutral",
+                        "confidence": 50,
+                        "recommended_chain": "",
+                        "reason": f"glm-4.7-flash response parsing failed: {content[:200]}",
+                    }
+
+            return {
+                "event_type": "unknown",
+                "sentiment": "neutral",
+                "confidence": 50,
+                "recommended_chain": "",
+                "reason": "glm-4.7-flash no choices returned",
+            }
+
+        except requests.exceptions.Timeout:
+            return {
+                "event_type": "unknown",
+                "sentiment": "neutral",
+                "confidence": 50,
+                "recommended_chain": "",
+                "reason": "glm-4.7-flash timeout",
+            }
+        except requests.exceptions.RequestException as e:
+            return {
+                "event_type": "unknown",
+                "sentiment": "neutral",
+                "confidence": 50,
+                "recommended_chain": "",
+                "reason": f"glm-4.7-flash API error: {str(e)[:100]}",
+            }
+        except Exception as e:
+            return {
+                "event_type": "unknown",
+                "sentiment": "neutral",
+                "confidence": 50,
+                "recommended_chain": "",
+                "reason": f"glm-4.7-flash error: {str(e)[:100]}",
+            }
 
     def analyze(self, headline: str, raw_text: str = "") -> Dict[str, Any]:
         provider = self._provider_name()

@@ -27,6 +27,8 @@ const STATE = {
   traceOrder: [],
   reconnectAttempt: 0,
   reconnectTimer: null,
+  lastNewsTimer: null,
+  lastNewsAt: null,
 };
 
 function escapeHtml(value) {
@@ -134,6 +136,9 @@ function init() {
   connectWebSocket();
   setupEventListeners();
   renderTimeline();
+  if (!STATE.lastNewsTimer) {
+    STATE.lastNewsTimer = setInterval(() => updateLastNewsAt(STATE.lastNewsAt), 1000);
+  }
 }
 
 function clearReconnectTimer() {
@@ -258,6 +263,8 @@ function handleEventUpdate(payload, options = {}) {
     headline: payload.headline,
     headline_cn: payload.headline_cn,
     source: payload.source,
+    source_type: payload.source_type || '',
+    source_mode: payload.source_mode || '',
     severity: payload.severity || 'E2',
     news_timestamp: payload.news_timestamp || payload.published_at || payload.news_time || null,
     timestamp: payload.timestamp,
@@ -274,6 +281,8 @@ function handleEventUpdate(payload, options = {}) {
     trimArray(STATE.news, MAX_NEWS_ITEMS);
     trimArray(STATE.events, MAX_NEWS_ITEMS);
   }
+  STATE.lastNewsAt = event.timestamp || event.news_timestamp || null;
+  updateLastNewsAt(STATE.lastNewsAt);
   if (shouldRender) renderNews();
 }
 
@@ -339,6 +348,30 @@ function updateConnectionStatus(status) {
   }
 }
 
+function updateLastNewsAt(ts) {
+  const label = document.getElementById('lastNewsAt');
+  if (!label) return;
+  if (!ts) {
+    label.textContent = '最近新闻: --';
+    return;
+  }
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) {
+    label.textContent = `最近新闻: ${ts}`;
+    return;
+  }
+  const diffSec = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  let rel = '';
+  if (diffSec < 60) {
+    rel = `${diffSec}秒前`;
+  } else if (diffSec < 3600) {
+    rel = `${Math.floor(diffSec / 60)}分钟前`;
+  } else {
+    rel = `${Math.floor(diffSec / 3600)}小时前`;
+  }
+  label.textContent = `最近新闻: ${rel}`;
+}
+
 function setupEventListeners() {
   document.getElementById('sectorFilter').addEventListener('change', (e) => {
     renderSectors(e.target.value);
@@ -375,6 +408,8 @@ function renderNews() {
          data-news-id="${escapeHtml(news.id)}">
       <div class="news-meta">
         <span class="news-source">${escapeHtml(news.source)}</span>
+        ${news.source_mode ? `<span class="news-source-mode">${escapeHtml(news.source_mode.toUpperCase())}</span>` : ''}
+        ${news.source_type ? `<span class="news-source-type">${escapeHtml(news.source_type)}</span>` : ''}
         <span class="news-severity severity-${escapeHtml(news.severity)}">${escapeHtml(news.severity)}</span>
       </div>
       <div class="news-time">新闻: ${escapeHtml(formatTimestamp(news.news_timestamp || news.timestamp))} | 推送: ${escapeHtml(formatTimestamp(news.timestamp))}</div>

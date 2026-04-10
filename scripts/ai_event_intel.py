@@ -71,6 +71,17 @@ def _normalize_timestamp(ts: Optional[str]) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _infer_source_mode(source_type: str, source_url: str = "") -> str:
+    st = (source_type or "").strip().lower()
+    if st in {"sina", "push", "live"}:
+        return "push"
+    if st in {"rss", "atom", "newsapi", "fallback", "failed"}:
+        return "pull"
+    if "zhibo.sina.com.cn" in (source_url or "").lower():
+        return "push"
+    return "unknown"
+
+
 def _parse_rss(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
     root = ET.fromstring(xml_text)
     items = []
@@ -88,6 +99,7 @@ def _parse_rss(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
                 "timestamp": pub_date,
                 "raw_text": description,
                 "source_type": "rss",
+                "source_mode": "pull",
             }
         )
     items.sort(key=lambda x: _parse_datetime(x.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
@@ -115,6 +127,7 @@ def _parse_atom(xml_text: str, source_url: str) -> List[Dict[str, Any]]:
                 "timestamp": updated,
                 "raw_text": summary,
                 "source_type": "atom",
+                "source_mode": "pull",
             }
         )
     items.sort(key=lambda x: _parse_datetime(x.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
@@ -295,6 +308,7 @@ class NewsIngestion(EDTModule):
                     "timestamp": _now_iso(),
                     "raw_text": "Fallback news item used when sources fail.",
                     "source_type": "fallback",
+                    "source_mode": "pull",
                     "is_fallback": True,
                     "is_test_data": True,  # 标记为测试数据
                 }
@@ -335,6 +349,7 @@ class NewsIngestion(EDTModule):
             "timestamp": timestamp,
             "raw_text": item.get("raw_text", ""),
             "source_type": item.get("source_type", ""),
+            "source_mode": item.get("source_mode") or _infer_source_mode(item.get("source_type", ""), source_url),
             "source_rank": source_rank,
             "is_test_data": bool(item.get("is_test_data", False)),
             "metadata": item.get("metadata", {}),
@@ -394,6 +409,7 @@ class NewsIngestion(EDTModule):
                     "timestamp": timestamp,
                     "raw_text": headline,
                     "source_type": "sina",
+                    "source_mode": "push",
                     "event_id": f"SINA-{item_id}" if item_id else "",
                 })
 

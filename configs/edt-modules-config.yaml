@@ -690,8 +690,13 @@ runtime:
     yahoo_quote_base: "https://query1.finance.yahoo.com/v7/finance/quote?symbols="
   hurt_to_short: false
   semantic:
-    enabled: false
+    enabled: true
+    provider: gemini_flash_lite
+    model: gemini-2.5-flash-lite
     min_confidence: 70
+    timeout_ms: 1500
+    full_enable: true
+    emergency_disable: false
   c_module_stack:
     history_file: "logs/event_bus_history.jsonl"
     mock_producer:

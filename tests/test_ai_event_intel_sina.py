@@ -68,6 +68,7 @@ class TestSinaFetch:
                 assert len(result) == 1
                 assert result[0]["headline"] == "测试新闻标题"
                 assert result[0]["source_type"] == "sina"
+                assert result[0]["source_mode"] == "push"
                 assert "SINA-12345" in result[0]["event_id"]
 
 
@@ -94,6 +95,7 @@ class TestSinaNormalization:
 
         assert normalized["headline"] == "新浪财经新闻"
         assert normalized["source_type"] == "sina"
+        assert normalized["source_mode"] == "push"
         assert normalized["source_url"] == "https://finance.sina.com.cn/article.html"
 
 

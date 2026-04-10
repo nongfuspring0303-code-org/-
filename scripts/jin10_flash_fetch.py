@@ -20,10 +20,16 @@ def _read_env(name: str, default: str = "") -> str:
 
 
 def _parse_sse_json(text: str) -> Dict[str, Any]:
-    text = text.strip()
-    if "\ndata:" in text:
-        data_line = text.split("\ndata:", 1)[1].strip()
-        return json.loads(data_line)
+    text = (text or "").strip()
+    if not text:
+        return {}
+    data_parts = []
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            data_parts.append(line[5:].strip())
+    payload = "\n".join(part for part in data_parts if part)
+    if payload:
+        return json.loads(payload)
     return json.loads(text)
 
 

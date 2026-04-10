@@ -19,6 +19,7 @@ import urllib.request
 import urllib.error
 import hashlib
 import json
+import logging
 from email.utils import parsedate_to_datetime
 import os
 
@@ -152,9 +153,15 @@ def _safe_fetch(url: str, timeout: int) -> Optional[str]:
 
 def _parse_sse_json(text: str) -> Dict[str, Any]:
     text = (text or "").strip()
-    if "\ndata:" in text:
-        data_line = text.split("\ndata:", 1)[1].strip()
-        return json.loads(data_line)
+    if not text:
+        return {}
+    data_parts = []
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            data_parts.append(line[5:].strip())
+    payload = "\n".join(part for part in data_parts if part)
+    if payload:
+        return json.loads(payload)
     return json.loads(text)
 
 
@@ -437,7 +444,9 @@ class NewsIngestion(EDTModule):
         if not enable_jin10:
             return []
 
-        mcp_url = str(self._get_config("modules.NewsIngestion.params.jin10.mcp_url", "https://mcp.jin10.com/mcp"))
+        mcp_url = str(self._get_config("modules.NewsIngestion.params.jin10.mcp_url", ""))
+        if not mcp_url:
+            mcp_url = os.getenv("JIN10_MCP_URL", "https://mcp.jin10.com/mcp").strip()
         token_env = str(self._get_config("modules.NewsIngestion.params.jin10.token_env", "JIN10_MCP_TOKEN"))
         token = os.getenv(token_env, "").strip()
         if not token:
@@ -448,55 +457,59 @@ class NewsIngestion(EDTModule):
             "Authorization": token,
         }
 
-        def rpc(method: str, params: Dict[str, Any], request_id: int, notify: bool = False):
-            payload: Dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params}
-            if not notify:
-                payload["id"] = request_id
-            req = urllib.request.Request(mcp_url, data=json.dumps(payload).encode("utf-8"), headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
-                parsed = _parse_sse_json(raw)
-                return parsed, resp.headers
+        try:
+            def rpc(method: str, params: Dict[str, Any], request_id: int, notify: bool = False):
+                payload: Dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params}
+                if not notify:
+                    payload["id"] = request_id
+                req = urllib.request.Request(mcp_url, data=json.dumps(payload).encode("utf-8"), headers=headers)
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                    parsed = _parse_sse_json(raw)
+                    return parsed, resp.headers
 
-        init_params = {
-            "protocolVersion": "2025-11-25",
-            "capabilities": {"tools": {}, "resources": {}},
-            "clientInfo": {"name": "edt-jin10", "version": "0.1.0"},
-        }
-        init_resp, init_headers = rpc("initialize", init_params, 1)
-        session_id = None
-        for k, v in init_headers.items():
-            if k.lower() in ("mcp-session-id", "session-id", "x-session-id"):
-                session_id = v
-                break
-        if session_id:
-            headers["mcp-session-id"] = session_id
-        rpc("notifications/initialized", {}, 2, notify=True)
+            init_params = {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {"tools": {}, "resources": {}},
+                "clientInfo": {"name": "edt-jin10", "version": "0.1.0"},
+            }
+            init_resp, init_headers = rpc("initialize", init_params, 1)
+            session_id = None
+            for k, v in init_headers.items():
+                if k.lower() in ("mcp-session-id", "session-id", "x-session-id"):
+                    session_id = v
+                    break
+            if session_id:
+                headers["mcp-session-id"] = session_id
+            rpc("notifications/initialized", {}, 2, notify=True)
 
-        call_params = {"name": "list_flash", "arguments": {}}
-        call_resp, _ = rpc("tools/call", call_params, 3)
-        structured = call_resp.get("result", {}).get("structuredContent") or {}
-        data = structured.get("data", {}) if isinstance(structured, dict) else {}
-        items_raw = data.get("items", []) if isinstance(data, dict) else []
-        if not isinstance(items_raw, list):
+            call_params = {"name": "list_flash", "arguments": {}}
+            call_resp, _ = rpc("tools/call", call_params, 3)
+            structured = call_resp.get("result", {}).get("structuredContent") or {}
+            data = structured.get("data", {}) if isinstance(structured, dict) else {}
+            items_raw = data.get("items", []) if isinstance(data, dict) else []
+            if not isinstance(items_raw, list):
+                return []
+
+            items: List[Dict[str, Any]] = []
+            for raw in items_raw:
+                content = raw.get("content", "")
+                ts = raw.get("time", "")
+                url = raw.get("url", "")
+                if not content:
+                    continue
+                items.append({
+                    "headline": content,
+                    "source_url": url,
+                    "timestamp": ts,
+                    "raw_text": content,
+                    "source_type": "jin10",
+                    "source_mode": "push",
+                })
+            return items
+        except Exception as exc:
+            logging.warning("jin10_fetch_failed reason=%s", exc)
             return []
-
-        items: List[Dict[str, Any]] = []
-        for raw in items_raw:
-            content = raw.get("content", "")
-            ts = raw.get("time", "")
-            url = raw.get("url", "")
-            if not content:
-                continue
-            items.append({
-                "headline": content,
-                "source_url": url,
-                "timestamp": ts,
-                "raw_text": content,
-                "source_type": "jin10",
-                "source_mode": "push",
-            })
-        return items
 
 
 class EventEvidenceScorer(EDTModule):

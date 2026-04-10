@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 DEFAULT_URL = "https://mcp.jin10.com/mcp"
@@ -33,7 +33,7 @@ def _parse_sse_json(text: str) -> Dict[str, Any]:
     return json.loads(text)
 
 
-def _rpc_call(url: str, headers: Dict[str, str], method: str, params: Optional[Dict[str, Any]] = None, request_id: Optional[int] = 1, notify: bool = False) -> Dict[str, Any]:
+def _rpc_call(url: str, headers: Dict[str, str], method: str, params: Optional[Dict[str, Any]] = None, request_id: Optional[int] = 1, notify: bool = False) -> Tuple[Dict[str, Any], Any]:
     payload: Dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params or {}}
     if not notify:
         payload["id"] = request_id

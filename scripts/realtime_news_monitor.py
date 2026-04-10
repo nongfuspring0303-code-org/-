@@ -11,6 +11,7 @@ Real-time News Monitor for EDT Project
 """
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -492,6 +493,23 @@ class RealtimeNewsMonitor:
                 break
             
             time.sleep(self.poll_interval)
+
+    async def run_loop_async(self):
+        """异步版本的持续运行"""
+        logger.info(f"🚀 启动实时新闻监控 (轮询间隔: {self.poll_interval}秒)")
+        
+        while True:
+            try:
+                triggered = self.run_once()
+                if triggered:
+                    logger.info("⏸️ 等待下一轮...")
+            except KeyboardInterrupt:
+                logger.info("🛑 用户中断")
+                break
+            except Exception as e:
+                logger.error(f"循环异常: {e}")
+            
+            await asyncio.sleep(self.poll_interval)
 
 
 def main():

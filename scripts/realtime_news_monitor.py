@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -138,13 +139,54 @@ class RealtimeNewsMonitor:
     def _translate_headline(self, headline: str) -> Optional[str]:
         """翻译标题为中文（非官方库，失败即跳过）"""
         if not headline or not self.translator:
-            return None
+            return self._fallback_translate_headline(headline)
         try:
             result = self.translator.translate(headline, dest="zh-cn")
-            return result.text if result else None
+            text = result.text if result else None
+            return text or self._fallback_translate_headline(headline)
         except Exception as e:
             logger.warning(f"⚠️ 翻译失败: {e}")
+            return self._fallback_translate_headline(headline)
+
+    def _fallback_translate_headline(self, headline: str) -> Optional[str]:
+        """简单、确定性的本地兜底翻译，确保没有外部翻译器时仍能显示中文。"""
+        if not headline:
             return None
+
+        replacements = [
+            (r"\bFed\b", "美联储"),
+            (r"\bFOMC\b", "联邦公开市场委员会"),
+            (r"\bSEC\b", "美国SEC"),
+            (r"\bReuters\b", "路透"),
+            (r"\btariff(s)?\b", "关税"),
+            (r"\btrade war\b", "贸易战"),
+            (r"\brate cut(s)?\b", "降息"),
+            (r"\brate hike(s)?\b", "加息"),
+            (r"\binflation\b", "通胀"),
+            (r"\bjob(s)?\b", "就业"),
+            (r"\bmarket(s)?\b", "市场"),
+            (r"\bstock(s)?\b", "股票"),
+            (r"\bearnings\b", "财报"),
+            (r"\bguidance\b", "指引"),
+            (r"\bCEO\b", "CEO"),
+            (r"\bbank\b", "银行"),
+            (r"\bcrisis\b", "危机"),
+            (r"\bsanction(s)?\b", "制裁"),
+            (r"\bwar\b", "战争"),
+            (r"\beconomy\b", "经济"),
+            (r"\bconsumer\b", "消费者"),
+            (r"\btechnology\b", "科技"),
+            (r"\benergy\b", "能源"),
+            (r"\bhealthcare\b", "医疗"),
+        ]
+
+        text = headline
+        for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+        if text == headline:
+            return None
+        return text
 
     def _c_ingest_headers(self) -> Dict[str, str]:
         return {
@@ -521,7 +563,7 @@ class RealtimeNewsMonitor:
         
         while True:
             try:
-                triggered = self.run_once()
+                triggered = await asyncio.to_thread(self.run_once)
                 if triggered:
                     logger.info("⏸️ 等待下一轮...")
             except KeyboardInterrupt:

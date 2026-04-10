@@ -11,7 +11,6 @@ from typing import Any, Dict
 import requests
 from config_center import ConfigCenter
 
-ZAI_API_KEY = "02d375ac9afd403e86a41c06d3049e4f.2IgpJFObuBFlNFH7"
 ZAI_BASE_URL = "https://api.z.ai/api/paas/v4"
 
 
@@ -56,6 +55,16 @@ class SemanticAnalyzer:
     def _model_name(self) -> str:
         model = self._semantic_cfg().get("model", "")
         return str(model or "")
+
+    def _api_key(self) -> str:
+        semantic = self._semantic_cfg()
+        env_name = str(semantic.get("api_key_env", "ZAI_API_KEY") or "ZAI_API_KEY").strip()
+        env_names = [env_name, "GLM_API_KEY", "OPENCLAW_GLM_API_KEY"]
+        for name in env_names:
+            value = os.getenv(name, "").strip()
+            if value:
+                return value
+        return ""
 
     def _abstain_response(
         self,
@@ -152,11 +161,21 @@ class SemanticAnalyzer:
 - recommended_chain: 推荐的应对链名称（如果有）
 - reason: 判断理由
 
-如果新闻内容不足以做出判断，请返回confidence为0并说明原因。"""
+        如果新闻内容不足以做出判断，请返回confidence为0并说明原因。"""
+
+        api_key = self._api_key()
+        if not api_key:
+            return {
+                "event_type": "unknown",
+                "sentiment": "neutral",
+                "confidence": 50,
+                "recommended_chain": "",
+                "reason": "glm-4.7-flash api key missing",
+            }
 
         try:
             headers = {
-                "Authorization": f"Bearer {ZAI_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
             payload = {

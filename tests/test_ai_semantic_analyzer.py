@@ -135,3 +135,20 @@ def test_semantic_analyzer_normal_hit_contains_provider(tmp_path, monkeypatch):
     out = analyzer.analyze("Trump-Xi trade meeting", "capital flows")
     assert out["verdict"] == "hit"
     assert out["provider"] == "mock_vendor"
+
+
+def test_semantic_analyzer_missing_api_key_falls_back(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        "modules: {}\nruntime:\n  semantic:\n    enabled: true\n    provider: glm-4.7-flash\n    model: glm-4.7-flash\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ZAI_API_KEY", raising=False)
+    monkeypatch.delenv("GLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCLAW_GLM_API_KEY", raising=False)
+
+    out = SemanticAnalyzer(config_path=str(cfg)).analyze("headline", "raw")
+
+    assert out["verdict"] == "abstain"
+    assert out["fallback_reason"] == "confidence_below_threshold"
+    assert out["reason"] == "glm-4.7-flash api key missing"

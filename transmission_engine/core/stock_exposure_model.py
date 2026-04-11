@@ -44,6 +44,16 @@ def load_event_exposure_matrix(matrix_path: Path | None = None) -> Dict[str, Dic
     return out
 
 
+def _load_gate_policy() -> Dict[str, Any]:
+    path = _root() / "configs" / "gate_policy.yaml"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = yaml.safe_load(f) or {}
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
 def build_stock_candidates(
     event_payload: Dict[str, Any],
     sector_rankings: Dict[str, Any],
@@ -51,6 +61,10 @@ def build_stock_candidates(
 ) -> List[Dict[str, Any]]:
     premium = load_premium_pool()
     exposure_matrix = load_event_exposure_matrix()
+    gate_policy = _load_gate_policy()
+    cls_cfg = (gate_policy.get("stock_exposure") or {}).get("classification", {})
+    first_order_min = _safe_float(cls_cfg.get("first_order_min", 85.0), 85.0)
+    leveraged_proxy_min = _safe_float(cls_cfg.get("leveraged_proxy_min", 65.0), 65.0)
 
     event_type_lv2 = str(event_payload.get("event_type_lv2", "")).strip()
     primary_sector = str((sector_rankings or {}).get("primary_sector", "")).strip()
@@ -80,9 +94,9 @@ def build_stock_candidates(
         }
         total = round(sum(score_breakdown.values()), 2)
 
-        if event_exposure >= 85:
+        if event_exposure >= first_order_min:
             classification = "first_order_carrier"
-        elif event_exposure >= 65:
+        elif event_exposure >= leveraged_proxy_min:
             classification = "leveraged_proxy"
         else:
             classification = "contaminated"

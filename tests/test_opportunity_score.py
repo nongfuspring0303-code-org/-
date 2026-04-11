@@ -166,3 +166,17 @@ def test_opportunity_output_contains_gate_and_score_fields():
     assert "score_breakdown" in first
     assert "state_machine_step" in first
     assert "gate_reason_code" in first
+
+
+def test_opportunity_handles_invalid_asset_validation_shape_defensively():
+    scorer = OpportunityScorer()
+    payload = {
+        "trace_id": "evt_invalid_asset_validation",
+        "schema_version": "v1.1",
+        "news_timestamp": "2026-04-11T00:00:00Z",
+        "sectors": [{"name": "Technology", "direction": "LONG", "impact_score": 0.8, "confidence": 0.9}],
+        "stock_candidates": [{"symbol": "NVDA", "sector": "Technology", "direction": "LONG", "event_beta": 1.2}],
+        "asset_validation": "invalid-shape",
+    }
+    out = scorer.build_opportunity_update(payload)
+    assert out["action"] in {"WATCH", "NO_ACTION", "TRADE"}

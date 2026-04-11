@@ -48,6 +48,21 @@ def test_trade_when_all_gates_pass():
     assert out["gate_reason_code"] == "ALL_PASSED"
 
 
+def test_asset_validation_below_no_action_max_returns_no_action():
+    event = {
+        "trace_id": "t2b",
+        "schema_version": "v1.1",
+        "news_timestamp": "2026-04-11T00:00:00Z",
+        "mixed_regime": False,
+        "asset_validation": {"score": 20.0},
+        "risk_blocked": False,
+    }
+    out = evaluate_state(event, _gate_policy())
+    assert out["action"] == "NO_ACTION"
+    assert out["state_machine_step"] == "asset_validation"
+    assert out["gate_reason_code"] == "ASSET_REJECTED"
+
+
 def test_mixed_regime_override_enabled_but_not_meeting_thresholds_returns_watch():
     gate = {
         "asset_validation": {"trade_min": 65.0},

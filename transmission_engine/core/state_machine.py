@@ -39,8 +39,17 @@ def evaluate_state(event: Dict[str, Any], gate_policy: Dict[str, Any]) -> Dict[s
                 "gate_reason": "mixed_regime override conditions not met",
             }
 
+    av_cfg = gate_policy.get("asset_validation") or {}
     av = float(((event.get("asset_validation") or {}).get("score") or 0.0))
-    av_min = float(((gate_policy.get("asset_validation") or {}).get("trade_min") or 65.0))
+    av_no_action_max = float((av_cfg.get("no_action_max") or 45.0))
+    av_min = float((av_cfg.get("trade_min") or 65.0))
+    if av < av_no_action_max:
+        return {
+            "action": "NO_ACTION",
+            "state_machine_step": "asset_validation",
+            "gate_reason_code": "ASSET_REJECTED",
+            "gate_reason": "asset validation below no_action_max",
+        }
     if av < av_min:
         return {
             "action": "WATCH",

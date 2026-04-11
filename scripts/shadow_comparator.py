@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -49,7 +50,9 @@ def compare_shadow(a_records: List[Dict[str, Any]], b_records: List[Dict[str, An
         deltas.append(abs(a_score - b_score))
 
     deltas.sort()
-    idx = int(round(0.95 * (len(deltas) - 1))) if deltas else 0
+    idx = int(math.ceil(0.95 * len(deltas)) - 1) if deltas else 0
+    if idx < 0:
+        idx = 0
     p95 = deltas[idx] if deltas else 0.0
 
     total = float(len(paired))

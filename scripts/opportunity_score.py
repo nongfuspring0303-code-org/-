@@ -474,12 +474,16 @@ class OpportunityScorer:
             "gate_reason": "fallback default",
         }
         if evaluate_state is not None:
+            asset_validation_raw = payload.get("asset_validation", {})
+            if not isinstance(asset_validation_raw, dict):
+                asset_validation_raw = {}
+            asset_validation_score = self._safe_float(asset_validation_raw.get("score", 0.0), 0.0)
             gate_event = {
                 "trace_id": trace_id,
                 "schema_version": schema_version,
                 "news_timestamp": timestamp,
                 "mixed_regime": bool(payload.get("mixed_regime", False)),
-                "asset_validation": payload.get("asset_validation", {}),
+                "asset_validation": {"score": asset_validation_score},
                 "risk_blocked": bool(payload.get("risk_blocked", False)),
             }
             state_out = evaluate_state(gate_event, self._gate_policy)

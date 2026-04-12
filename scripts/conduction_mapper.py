@@ -434,6 +434,7 @@ class ConductionMapper(EDTModule):
             status=ModuleStatus.SUCCESS,
             data={
                 "event_id": raw["event_id"],
+                "schema_version": raw.get("schema_version", "v1.1"),
                 "macro_factors": mapping["macro_factors"],
                 "asset_impacts": mapping["asset_impacts"],
                 "sector_impacts": mapping["sector_impacts"],

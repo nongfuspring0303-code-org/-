@@ -83,7 +83,7 @@ class SemanticAnalyzer:
         # Priority: env > .env.local > (none)
         env_name = "ZAI_API_KEY"
         
-        # 1. Environment variable
+        # 1. Environment variable (重新读取，因为 _load_env_from_bash_profile 可能已经设置了)
         value = os.getenv(env_name, "").strip()
         if value:
             return value

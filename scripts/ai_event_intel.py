@@ -160,9 +160,12 @@ def _parse_sse_json(text: str) -> Dict[str, Any]:
         if line.startswith("data:"):
             data_parts.append(line[5:].strip())
     payload = "\n".join(part for part in data_parts if part)
-    if payload:
-        return json.loads(payload)
-    return json.loads(text)
+    try:
+        if payload:
+            return json.loads(payload)
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
 
 
 def _tokenize(text: str) -> List[str]:

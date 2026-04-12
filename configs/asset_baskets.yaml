@@ -48,6 +48,10 @@ asset_baskets:
       liquidity: 0.10
       risk_appetite: 0.10
     score_scale: 0.35
+asset_validation:
+  score_weights:
+    basket: 0.55
+    leader: 0.45
 asset_profiles:
   "US Equities":
     weights:

@@ -80,6 +80,21 @@ def test_asset_validator_applies_conflict_penalty_when_divergences_exceed_two():
     assert asset_validation["score"] < 65
 
 
+def test_asset_validator_uses_asset_validation_score_weights_not_admission_threshold():
+    validator = AssetValidator()
+    validator.config_center.refresh_registered = lambda _name: None
+    validator.config_center._registered_data["gate_policy"]["trade_admission"]["asset_validation_min"] = 99.0
+
+    baseline = AssetValidator().run(_base_input())
+    mutated = validator.run(_base_input())
+
+    assert mutated.data["asset_validation"]["score"] == baseline.data["asset_validation"]["score"]
+    assert validator.config_center.get_registered("asset_baskets", {})["asset_validation"]["score_weights"] == {
+        "basket": 0.55,
+        "leader": 0.45,
+    }
+
+
 def test_asset_validator_supports_three_state_output():
     strong = AssetValidator().run(
         _base_input(
@@ -136,6 +151,7 @@ def test_asset_baskets_config_contains_five_baskets_and_whitelist():
     cfg = yaml.safe_load((ROOT / "configs" / "asset_baskets.yaml").read_text(encoding="utf-8"))
     baskets = cfg["asset_baskets"]
     whitelist = cfg["asset_universe"]["whitelist"]
+    score_weights = cfg["asset_validation"]["score_weights"]
 
     assert list(baskets.keys()) == [
         "rates_basket",
@@ -145,3 +161,4 @@ def test_asset_baskets_config_contains_five_baskets_and_whitelist():
         "growth_vs_value_basket",
     ]
     assert len(whitelist) >= 1
+    assert score_weights == {"basket": 0.55, "leader": 0.45}

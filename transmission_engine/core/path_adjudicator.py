@@ -88,7 +88,11 @@ class PathAdjudicator(EDTModule):
 
         return sorted(paths, key=sort_key)
 
-    def _narrative_guard(self, ranked: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], bool, bool]:
+    def _narrative_guard_threshold(self) -> float:
+        path_dominance = self._gate_policy().get("path_dominance", {})
+        return float(path_dominance["narrative_top_requires_non_narrative_min"])
+
+    def _narrative_guard(self, ranked: List[Dict[str, Any]], threshold: float) -> tuple[List[Dict[str, Any]], bool, bool]:
         if not ranked:
             return [], False, False
 
@@ -105,7 +109,7 @@ class PathAdjudicator(EDTModule):
             [self._as_float(p.get("confidence", p.get("score", 0.0))) for p in ranked if str(p.get("path_type", "")) == "asset_pricing"],
             default=0.0,
         )
-        if fundamental_best >= 50.0 or asset_best >= 50.0:
+        if fundamental_best >= threshold or asset_best >= threshold:
             return ranked, False, False
 
         non_narrative = [p for p in ranked if str(p.get("path_type", "")) != "narrative"]
@@ -118,10 +122,11 @@ class PathAdjudicator(EDTModule):
         raw = input_data.raw_data
         precision = self._precision()
         min_gap = float(self._gate_policy().get("path_dominance", {}).get("min_gap", 12.0))
+        narrative_min = self._narrative_guard_threshold()
 
         normalized = [self._normalize_path(path) for path in raw.get("transmission_paths", []) if isinstance(path, dict)]
         ranked = self._rank_paths(normalized)
-        ranked, narrative_guarded, reordered = self._narrative_guard(ranked)
+        ranked, narrative_guarded, reordered = self._narrative_guard(ranked, narrative_min)
 
         top1 = ranked[0] if ranked else None
         top2 = ranked[1] if len(ranked) > 1 else None

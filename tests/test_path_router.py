@@ -36,11 +36,21 @@ def test_path_router_emits_three_paths_with_required_fields_and_impact_chain():
         assert path["confidence"] == round(path["confidence"], 2)
         assert isinstance(path["nodes"], list) and len(path["nodes"]) >= 2
         assert isinstance(path["edges"], list) and len(path["edges"]) >= 1
+        for edge in path["edges"]:
+            assert {"from", "to", "weight", "lag", "path_type"}.issubset(edge.keys())
 
     assert len(impact_chain) >= 3
     for item in impact_chain:
         assert {"full_path", "score", "direction", "reason"}.issubset(item.keys())
         assert item["score"] == round(item["score"], 2)
+
+    assert out.data["schema_version"] == "v1.1"
+
+
+def test_path_router_preserves_input_schema_version_when_present():
+    out = PathRouter().run(_base_input(schema_version="v2.0"))
+
+    assert out.data["schema_version"] == "v2.0"
 
 
 def test_path_router_marks_degraded_status_when_nodes_or_edges_are_missing():

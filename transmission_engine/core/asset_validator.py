@@ -92,6 +92,11 @@ class AssetValidator(EDTModule):
         baskets = self._bundle().get("asset_baskets", {})
         return {str(name): value for name, value in baskets.items() if isinstance(value, dict)} if isinstance(baskets, dict) else {}
 
+    def _score_weights(self) -> Dict[str, Any]:
+        asset_validation = self._bundle().get("asset_validation", {})
+        weights = asset_validation.get("score_weights", {}) if isinstance(asset_validation, dict) else {}
+        return weights if isinstance(weights, dict) else {}
+
     def _score_asset(self, raw_vector: Dict[str, float], profile: Dict[str, Any], precision: int) -> float:
         weights = profile.get("weights", {})
         scale = float(profile.get("score_scale", 0.6))
@@ -184,8 +189,9 @@ class AssetValidator(EDTModule):
         leader_avg = self._round(mean(score for _name, score in ranked_assets[:leader_min_count]) if ranked_assets else 0.0, precision)
         divergences = [name for name, score in ranked_assets if score < float(policy.get("no_action_max", 45.0))]
 
-        basket_weight = float(self._gate_policy().get("trade_admission", {}).get("asset_validation_min", 65.0)) / 100.0
-        leader_weight = 1.0 - basket_weight
+        score_weights = self._score_weights()
+        basket_weight = float(score_weights.get("basket", 0.0))
+        leader_weight = float(score_weights.get("leader", 0.0))
         penalty = self._divergence_penalty(len(divergences))
         validation_score = basket_avg * basket_weight + leader_avg * leader_weight - penalty
         validation_score = self._round(self._clip(validation_score, 0.0, 100.0), precision)

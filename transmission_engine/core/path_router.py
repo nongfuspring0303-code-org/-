@@ -25,6 +25,11 @@ class PathRouter(EDTModule):
         "asset_pricing": {"horizon": "intraday", "persistence": "fast", "base_confidence": 64.0},
         "narrative": {"horizon": "multiweek", "persistence": "slow", "base_confidence": 60.0},
     }
+    EDGE_DEFAULTS = {
+        "fundamental": ((1.0, 0), (0.85, 1)),
+        "asset_pricing": ((1.0, 0), (0.85, 1)),
+        "narrative": ((1.0, 0), (0.85, 1)),
+    }
     PATH_KEYWORDS = {
         "fundamental": {
             "positive": ("rates", "earnings", "policy", "growth", "macro", "guidance", "fundamental"),
@@ -63,6 +68,13 @@ class PathRouter(EDTModule):
             return round(float(value), precision)
         except (TypeError, ValueError):
             return round(0.0, precision)
+
+    @staticmethod
+    def _as_float(value: Any) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     @staticmethod
     def _clip(value: float, lower: float, upper: float) -> float:
@@ -121,10 +133,13 @@ class PathRouter(EDTModule):
             f"{path_type}:anchor",
             topic,
         ]
-        edges = [
-            {"source": nodes[0], "target": nodes[1], "relation": "initiates"},
-            {"source": nodes[1], "target": nodes[2], "relation": "translates"},
-        ]
+        edges = self._normalize_edges(
+            path_type,
+            [
+                {"from": nodes[0], "to": nodes[1], "source": nodes[0], "target": nodes[1], "relation": "initiates"},
+                {"from": nodes[1], "to": nodes[2], "source": nodes[1], "target": nodes[2], "relation": "translates"},
+            ],
+        )
         defaults = self.PATH_DEFAULTS[path_type]
         return {
             "path_id": path_id,
@@ -138,7 +153,35 @@ class PathRouter(EDTModule):
 
     @staticmethod
     def _edge_endpoints(edge: Dict[str, Any]) -> tuple[str, str]:
-        return str(edge.get("source", "")), str(edge.get("target", ""))
+        source = edge.get("from", edge.get("source", ""))
+        target = edge.get("to", edge.get("target", ""))
+        return str(source), str(target)
+
+    def _normalize_edges(self, path_type: str, edges: Any) -> List[Dict[str, Any]]:
+        if not isinstance(edges, list):
+            return []
+        normalized: List[Dict[str, Any]] = []
+        defaults = self.EDGE_DEFAULTS.get(path_type, ())
+        for index, edge in enumerate(edges):
+            if not isinstance(edge, dict):
+                continue
+            source, target = self._edge_endpoints(edge)
+            default_weight, default_lag = defaults[index] if index < len(defaults) else (1.0, index)
+            weight = self._round(self._clip(self._as_float(edge.get("weight", default_weight)), 0.0, 1.0), 2)
+            lag = int(edge.get("lag", default_lag))
+            normalized.append(
+                {
+                    "from": source,
+                    "to": target,
+                    "weight": weight,
+                    "lag": lag,
+                    "path_type": str(edge.get("path_type") or path_type),
+                    "source": source,
+                    "target": target,
+                    "relation": str(edge.get("relation", "transmits")),
+                }
+            )
+        return normalized
 
     def _is_degraded(self, nodes: Sequence[Any], edges: Sequence[Any]) -> tuple[bool, List[str]]:
         reasons: List[str] = []
@@ -176,7 +219,7 @@ class PathRouter(EDTModule):
         base = self._default_blueprint(raw, path_type)
         provided = blueprint if isinstance(blueprint, dict) else {}
         nodes = provided.get("nodes") if isinstance(provided.get("nodes"), list) else base["nodes"]
-        edges = provided.get("edges") if isinstance(provided.get("edges"), list) else base["edges"]
+        edges = self._normalize_edges(path_type, provided.get("edges")) if isinstance(provided.get("edges"), list) else base["edges"]
         degraded, reasons = self._is_degraded(nodes, edges)
         bias = self._keyword_bias(raw, path_type)
         confidence = self._confidence(path_type, bias, degraded, precision)
@@ -235,13 +278,13 @@ class PathRouter(EDTModule):
             status=ModuleStatus.SUCCESS,
             data={
                 "event_id": raw.get("event_id"),
-                "schema_version": raw.get("schema_version", "v1.0"),
+                "schema_version": raw.get("schema_version", "v1.1"),
                 "transmission_paths": paths,
                 "impact_chain": impact_chain,
             },
             metadata={
                 "path_count": len(paths),
                 "degraded_count": degraded_count,
-                "schema_version": raw.get("schema_version", "v1.0"),
+                "schema_version": raw.get("schema_version", "v1.1"),
             },
         )

@@ -60,6 +60,25 @@ def test_path_adjudicator_blocks_narrative_as_strong_main_path_when_non_narrativ
     assert out.metadata["narrative_guarded"] is True
 
 
+def test_path_adjudicator_uses_configured_narrative_guard_threshold():
+    adjudicator = PathAdjudicator()
+    adjudicator.config_center.refresh_registered = lambda _name: None
+    adjudicator.config_center._registered_data["gate_policy"]["path_dominance"]["narrative_top_requires_non_narrative_min"] = 40.0
+
+    out = adjudicator.run(
+        _base_input(
+            [
+                {"path_id": "narr_1", "path_name": "headline_narrative", "path_type": "narrative", "horizon": "multiweek", "persistence": "slow", "confidence": 82.0},
+                {"path_id": "fund_1", "path_name": "fundamental_core", "path_type": "fundamental", "horizon": "1-5D", "persistence": "medium", "confidence": 44.0},
+                {"path_id": "asset_1", "path_name": "asset_repricing", "path_type": "asset_pricing", "horizon": "intraday", "persistence": "fast", "confidence": 46.0},
+            ]
+        )
+    )
+
+    assert out.data["dominant_path"]["path_type"] == "narrative"
+    assert out.metadata["narrative_guarded"] is False
+
+
 def test_path_adjudicator_rounds_scores_to_two_decimals():
     out = PathAdjudicator().run(
         _base_input(

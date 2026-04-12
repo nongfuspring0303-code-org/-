@@ -6,8 +6,58 @@ cases:
     type: normal
     input:
       vix: 25
-      ted: 60
-      correlation: 0.65
+      ted: 30
+      correlation: 0.5
       spread_pct: 0.004
     expected:
       liquidity_state: "YELLOW"
+  - id: LQ-YAML-002
+    name: yellow_strong_multiple_warnings
+    type: normal
+    input:
+      vix: 26
+      ted: 85
+      correlation: 0.72
+      spread_pct: 0.006
+    expected:
+      liquidity_state: "YELLOW_STRONG"
+  - id: LQ-YAML-003
+    name: yellow_strong_near_danger_vix
+    type: normal
+    input:
+      vix: 29
+      ted: 55
+      correlation: 0.62
+      spread_pct: 0.004
+    expected:
+      liquidity_state: "YELLOW_STRONG"
+  - id: LQ-YAML-004
+    name: yellow_strong_near_danger_ted
+    type: normal
+    input:
+      vix: 22
+      ted: 95
+      correlation: 0.61
+      spread_pct: 0.004
+    expected:
+      liquidity_state: "YELLOW_STRONG"
+  - id: LQ-YAML-005
+    name: yellow_strong_near_danger_corr
+    type: normal
+    input:
+      vix: 22
+      ted: 55
+      correlation: 0.77
+      spread_pct: 0.004
+    expected:
+      liquidity_state: "YELLOW_STRONG"
+  - id: LQ-YAML-006
+    name: yellow_strong_near_danger_spread
+    type: normal
+    input:
+      vix: 22
+      ted: 55
+      correlation: 0.62
+      spread_pct: 0.009
+    expected:
+      liquidity_state: "YELLOW_STRONG"

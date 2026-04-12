@@ -474,12 +474,12 @@ modules:
           score_range: [0, 20]
           position_pct: 0
           action: "FORBIDDEN"
-      # 流动性调整
+      # 流动性调整（乘数：基础仓位 * 调整系数）
       liquidity_adjustments:
-        GREEN: 1.0
-        YELLOW: 0.5
-        YELLOW_STRONG: 0.3  # Score>60时保留30%
-        RED: 0
+        GREEN: 1.0           # 正常流动性，100%
+        YELLOW: 0.5          # 轻度警告，基础仓位的50%
+        YELLOW_STRONG: 0.3   # 严重警告，基础仓位的30%
+        RED: 0               # 危险流动性，0%
       # 单日风控
       daily:
         max_loss_pct: 0.05

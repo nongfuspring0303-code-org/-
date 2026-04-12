@@ -32,6 +32,7 @@ class ShockClassifier:
         self.config_dir = config_dir or base / "configs"
         self.event_type_map = self._load_yaml(self.config_dir / "event_type_lv2_mapping.yaml")
         self.event_to_shock = self._load_yaml(self.config_dir / "event_to_shock.yaml")
+        self.factor_templates = self._load_yaml(self.config_dir / "factor_templates.yaml")
         self.gate_policy = self._load_yaml(self.config_dir / "gate_policy.yaml")
 
     def classify(
@@ -120,17 +121,17 @@ class ShockClassifier:
                 return True
         return False
 
-    @staticmethod
-    def _severity_score(severity: str | int | None) -> int:
+    def _severity_score(self, severity: str | int | None) -> int:
         if severity is None:
             return 60
         if isinstance(severity, int):
             return max(40, min(95, 40 + severity * 15))
         key = str(severity).upper()
+        coeffs = self.factor_templates.get("coefficients", {}).get("severity", {}) if isinstance(self.factor_templates, dict) else {}
         mapping = {
             "E1": 50,
             "E2": 65,
             "E3": 80,
             "E4": 90,
         }
-        return mapping.get(key, 60)
+        return int(mapping.get(key, 60)) if not coeffs else int(40 + float(coeffs.get(key, 0.7)) * 40)

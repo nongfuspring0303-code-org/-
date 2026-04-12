@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict
 
 import requests
@@ -59,7 +60,26 @@ class SemanticAnalyzer:
         model = self._semantic_cfg().get("model", "")
         return str(model or "")
 
+    def _load_env_from_bash_profile(self) -> None:
+        """Load env from ~/.bash_profile if not set."""
+        env_name = "ZAI_API_KEY"
+        if os.getenv(env_name):
+            return
+        
+        bash_profile = Path.home() / ".bash_profile"
+        if bash_profile.exists():
+            with open(bash_profile) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith(f"export {env_name}="):
+                        _, value = line.split("=", 1)
+                        os.environ[env_name] = value.strip().strip('"')
+                        break
+
     def _api_key(self) -> str:
+        # Auto-load from bash_profile if needed
+        self._load_env_from_bash_profile()
+        
         # Priority: env > .env.local > (none)
         env_name = "ZAI_API_KEY"
         

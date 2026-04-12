@@ -14,6 +14,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from ai_semantic_analyzer import SemanticAnalyzer
 from conduction_mapper import ConductionMapper
 from fatigue_calculator import FatigueCalculator
 from intel_modules import IntelPipeline
@@ -27,15 +28,17 @@ from workflow_runner import WorkflowRunner
 class FullWorkflowRunner:
     """End-to-end runner across all implemented layers."""
 
-    def __init__(self):
+    def __init__(self, config_path: str | None = None):
         self.intel = IntelPipeline()
-        self.lifecycle = LifecycleManager()
-        self.fatigue = FatigueCalculator()
-        self.conduction = ConductionMapper()
-        self.validation = MarketValidator()
-        self.scorer = SignalScorer()
+        self.semantic = SemanticAnalyzer(config_path=config_path)
+        self.lifecycle = LifecycleManager(config_path=config_path)
+        self.fatigue = FatigueCalculator(config_path=config_path)
+        self.conduction = ConductionMapper(config_path=config_path)
+        self.validation = MarketValidator(config_path=config_path)
+        self.scorer = SignalScorer(config_path=config_path)
         self.opportunity = OpportunityScorer()
         self.execution = WorkflowRunner()
+        self.config_path = config_path
 
     def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         intel_out = self.intel.run(payload)
@@ -43,11 +46,20 @@ class FullWorkflowRunner:
         event_object = intel_out["event_object"]
         source_rank = intel_out["source_rank"]
 
+        semantic_out = self.semantic.analyze(
+            event_object.get("headline", ""),
+            event_object.get("raw_text", ""),
+        )
+        semantic_event_type = semantic_out.get("event_type", "unknown")
+        semantic_confidence = semantic_out.get("confidence", 50)
+        
+        severity = semantic_confidence if semantic_confidence >= 50 else event_object.get("severity", 50)
+
         lifecycle_out = self.lifecycle.run(
             {
                 "event_id": event_object["event_id"],
                 "category": event_object["category"],
-                "severity": event_object["severity"],
+                "severity": severity,
                 "source_rank": event_object["source_rank"],
                 "headline": event_object["headline"],
                 "detected_at": event_object["detected_at"],
@@ -63,9 +75,9 @@ class FullWorkflowRunner:
                 "event_id": event_object["event_id"],
                 "category": event_object["category"],
                 "lifecycle_state": lifecycle_out["lifecycle_state"],
-                "narrative_tags": payload.get("narrative_tags", ["macro_event"]),
+                "narrative_tags": payload.get("narrative_tags", [semantic_event_type]),
                 "category_active_count": payload.get("category_active_count", 3),
-                "tag_active_counts": payload.get("tag_active_counts", {"macro_event": 2}),
+                "tag_active_counts": payload.get("tag_active_counts", {semantic_event_type: 2}),
                 "days_since_last_dead": payload.get("days_since_last_dead", 5),
             }
         ).data
@@ -74,11 +86,11 @@ class FullWorkflowRunner:
             {
                 "event_id": event_object["event_id"],
                 "category": event_object["category"],
-                "severity": event_object["severity"],
+                "severity": severity,
                 "headline": event_object["headline"],
                 "summary": payload.get("summary", event_object["headline"]),
                 "lifecycle_state": lifecycle_out["lifecycle_state"],
-                "narrative_tags": payload.get("narrative_tags", ["macro_event"]),
+                "narrative_tags": payload.get("narrative_tags", [semantic_event_type]),
                 "policy_intervention": payload.get("policy_intervention", "NONE"),
             }
         ).data
@@ -118,6 +130,7 @@ class FullWorkflowRunner:
         ).data
 
         analysis_out = {
+            "semantic": semantic_out,
             "lifecycle": lifecycle_out,
             "fatigue": fatigue_out,
             "conduction": conduction_out,

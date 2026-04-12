@@ -188,6 +188,18 @@ class SemanticAnalyzer:
     def _call_glm_api(self, text: str, timeout_ms: int, *, model: str = "") -> Dict[str, Any]:
         prompt = f"""分析这条金融新闻，判断是否影响金融市场，返回纯JSON。
 
+sentiment 定义（基于对股票市场的直接影响）：
+- positive: 利好股市（如降息、财政刺激、超预期财报、并购利好、流动性宽松）
+- negative: 利空股市（如加息、衰退担忧、地缘冲突、监管收紧、流动性紧缩）
+- neutral: 中性影响（如中性政策、无重大影响）
+
+重要规则：
+1. 关注事件对市场的直接影响，而非事件发生的原因
+2. 货币政策：降息/量化宽松 = positive（流动性宽松）；加息/量化紧缩 = negative（流动性收紧）
+3. 财报：超预期 = positive；不及预期 = negative；符合预期 = neutral
+4. 地缘政治：冲突升级 = negative；和平谈判 = positive
+5. 监管政策：放松监管 = positive；加强监管 = negative
+
 event_type 可选：
 - tariff: 关税、贸易战
 - geo_political: 地缘政治、军事冲突
@@ -207,12 +219,11 @@ event_type 可选：
 - pandemic: 疫情、公共卫生
 - other: 其他
 
-sentiment: positive/negative/neutral
 confidence: 0-100
 recommended_chain: 推荐的分析链（可选）
 
 示例：
-{{"event_type":"tariff","sentiment":"negative","confidence":90,"recommended_chain":"","reason":"..."}}
+{{"event_type":"monetary","sentiment":"positive","confidence":90,"recommended_chain":"","reason":"美联储降息，流动性宽松，利好股市"}}
 
 新闻：{text}
 

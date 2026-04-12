@@ -124,12 +124,14 @@ class SignalScorer(EDTModule):
         if raw.get("narrative_mode") == "Narrative-Driven":
             adjustments.append("narrative_mode_position_cut")
 
+        # 强政策干预：增强当前方向而不是翻转
+        # 降息/量化宽松等本身就是政策干预，不应该翻转
+        # 这里的 policy_intervention 应该指"额外"的政策干预，如救市计划
+        # 但由于难以区分，我们改为增强方向：提高置信度或增加仓位
         if raw.get("policy_intervention") == "STRONG" and a1 >= 60:
-            if direction == "short":
-                direction = "flip_long"
-            elif direction == "long":
-                direction = "flip_short"
-            adjustments.append("policy_intervention_direction_flip")
+            # 强政策干预增强信号强度，不翻转方向
+            adjustments.append("policy_intervention_strength_boost")
+            # 可以选择性地提升分数或仓位，但保持方向不变
 
         if score >= 80:
             tier = "G1"

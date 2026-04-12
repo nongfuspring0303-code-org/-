@@ -103,9 +103,9 @@ cases:
       watch_mode: true
 
   - id: SS-005
-    name: strong_policy_intervention_flips_direction
+    name: strong_policy_intervention_boosts_strength
     type: boundary
-    description: 强政策干预且A1足够高时允许翻转方向
+    description: 强政策干预且A1足够高时增强信号强度，不翻转方向
     input:
       event_id: "ME-E-20260331-006.V1.0"
       severity: "E4"
@@ -125,8 +125,8 @@ cases:
       weights_version: "score_v1"
     expected:
       adjustments_applied_contains:
-        - "policy_intervention_direction_flip"
-      direction: "flip_long"
+        - "policy_intervention_strength_boost"
+      direction: "short"
 
   - id: SS-006
     name: crowded_trade_adjustment_recorded
@@ -180,9 +180,9 @@ cases:
       score_tier: "G4"
 
   - id: SS-008
-    name: policy_flip_from_long_to_short
+    name: policy_intervention_preserves_direction
     type: boundary
-    description: 强政策干预且基础方向为long时允许翻转为flip_short
+    description: 强政策干预保持基础方向不变并增强信号
     input:
       event_id: "ME-E-20260331-014.V1.0"
       severity: "E4"
@@ -202,8 +202,8 @@ cases:
       weights_version: "score_v1"
     expected:
       adjustments_applied_contains:
-        - "policy_intervention_direction_flip"
-      direction: "flip_short"
+        - "policy_intervention_strength_boost"
+      direction: "long"
 
   - id: SS-009
     name: low_score_falls_to_g5

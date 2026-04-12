@@ -149,7 +149,7 @@ class SignalScorer(EDTModule):
         # 降息/量化宽松等本身就是政策干预，不应该翻转
         # 这里的 policy_intervention 应该指"额外"的政策干预，如救市计划
         # 但由于难以区分，我们改为增强方向：提高置信度等级
-        if raw.get("policy_intervention") == "STRONG" and a1 >= 60:
+        if raw.get("policy_intervention") == "STRONG":
             # 强政策干预增强信号：提升置信度等级
             # G4 -> G3, G3 -> G2, 保持更高等级不变
             if tier == "G4":

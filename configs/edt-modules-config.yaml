@@ -386,9 +386,9 @@ modules:
           trigger_logic: "score匹配tiers中任意score_range则触发POSITION_TIER"
           action: "POSITION_TIER"
         G6_policy:
-          enabled: true
+          enabled: false
           trigger: "intervention = STRONG AND A1 >= 60"
-          action: "DIRECTION_FLIP"
+          action: "SIGNAL_ENHANCE"
         G7_ai_review:
           enabled: true
           trigger: "ai_review_required = true AND ai_review_passed = false"
@@ -423,10 +423,10 @@ modules:
       g6_policy:
         intervention_value: "STRONG"
         a1_threshold: 60
-        direction_on_trigger: "flip"
+        direction_on_trigger: "no_change"
       g7_ai_review:
         enabled: true
-        required: true
+        required: false
         action_on_reject: "WATCH"
         human_confirm_required: false
       # B1.1 安全降级因子（AI超时/失败时使用）

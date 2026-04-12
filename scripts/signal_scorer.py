@@ -119,9 +119,13 @@ class SignalScorer(EDTModule):
         score = max(-100.0, min(100.0, score_raw))
 
         if raw.get("is_crowded", False):
+            # 拥挤度折价: High级 → Score -30%
+            score = score * 0.70
             adjustments.append("crowded_trade_discount")
 
         if raw.get("narrative_mode") == "Narrative-Driven":
+            # Narrative模式: 降仓50%
+            # 在 tier 计算后应用
             adjustments.append("narrative_mode_position_cut")
 
         # 强政策干预：增强当前方向而不是翻转
@@ -160,6 +164,9 @@ class SignalScorer(EDTModule):
                 position_pct = 0.5
             adjustments.append("policy_intervention_strength_boost")
 
+        # Narrative模式: 降仓50%
+        if raw.get("narrative_mode") == "Narrative-Driven":
+            position_pct = position_pct * 0.50
 
         if tier == "G5":
             direction = "neutral"

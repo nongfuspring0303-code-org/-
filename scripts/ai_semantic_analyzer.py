@@ -198,6 +198,13 @@ event_type 可选：
 - industrial: 工业、制造
 - tech: 科技
 - healthcare: 医疗
+- regulatory: 监管政策、法规
+- merger: 并购、重组
+- inflation: 通胀
+- commodity: 大宗商品
+- credit: 信用违约、债券
+- natural_disaster: 自然灾害
+- pandemic: 疫情、公共卫生
 - other: 其他
 
 sentiment: positive/negative/neutral

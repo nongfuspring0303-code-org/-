@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 
 import yaml
 
+from scripts.config_center import ConfigCenter
+
 
 def _root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
@@ -45,10 +47,11 @@ def load_event_exposure_matrix(matrix_path: Path | None = None) -> Dict[str, Dic
 
 
 def _load_gate_policy() -> Dict[str, Any]:
+    cfg = ConfigCenter()
     path = _root() / "configs" / "gate_policy.yaml"
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = yaml.safe_load(f) or {}
+        cfg.register("gate_policy", path)
+        payload = cfg.get_registered("gate_policy", {})
         return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}

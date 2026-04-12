@@ -28,9 +28,12 @@ def _parse_sse_json(text: str) -> Dict[str, Any]:
         if line.startswith("data:"):
             data_parts.append(line[5:].strip())
     payload = "\n".join(part for part in data_parts if part)
-    if payload:
-        return json.loads(payload)
-    return json.loads(text)
+    try:
+        if payload:
+            return json.loads(payload)
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
 
 
 def _rpc_call(url: str, headers: Dict[str, str], method: str, params: Optional[Dict[str, Any]] = None, request_id: Optional[int] = 1, notify: bool = False) -> Tuple[Dict[str, Any], Any]:

@@ -101,22 +101,33 @@ class EventCapture(EDTModule):
 
         raw_text = str(raw.get("raw_text", "") or "")
         
-        # 全部通过 AI 语义分析
-        if self.semantic is None:
-            semantic_out = {
-                "verdict": "abstain",
-                "confidence": 50,
-                "reason": f"semantic_init_error: {self._semantic_init_error or 'unavailable'}",
-            }
-        else:
+        # AI 是否可用
+        ai_available = self.semantic is not None
+        
+        # 全部通过 AI 语义分析（如果可用）
+        DEFAULT_BASE_SCORE = 70  # 关键词基础分
+        semantic_out = None
+        
+        if ai_available:
             try:
                 semantic_out = self.semantic.analyze(headline_text, raw_text)
             except Exception as exc:
                 logger.warning("EventCapture semantic analyze failed: %s", exc)
-                semantic_out = {"verdict": "abstain", "confidence": 50, "reason": "semantic_error"}
-
-        ai_verdict = str(semantic_out.get("verdict", "abstain") or "abstain")
-        base_confidence = _safe_float(semantic_out.get("confidence"), 50)
+                semantic_out = None
+        
+        # 决定使用 AI 结果还是关键词回退
+        if semantic_out and semantic_out.get("confidence", 0) > 0:
+            # AI 可用，使用 AI 结果
+            ai_verdict = str(semantic_out.get("verdict", "abstain") or "abstain")
+            base_confidence = _safe_float(semantic_out.get("confidence"), DEFAULT_BASE_SCORE)
+            ai_reason = f"ai({semantic_out.get('reason', '')})"
+            use_ai = True
+        else:
+            # AI 失效，回退到关键词分析
+            ai_verdict = "keyword_fallback"
+            base_confidence = DEFAULT_BASE_SCORE
+            ai_reason = "keyword_fallback"
+            use_ai = False
         
         # 额外加分：关键词命中 +20 分
         bonus = 0
@@ -126,8 +137,16 @@ class EventCapture(EDTModule):
         
         ai_confidence = min(100, base_confidence + bonus)
         
-        # sentiment 从语义分析获取
-        sentiment = semantic_out.get("sentiment", "neutral")
+        # sentiment: AI有就用AI的，没有就用关键词判断
+        if use_ai and semantic_out:
+            sentiment = semantic_out.get("sentiment", "neutral")
+        else:
+            # 关键词判断 sentiment
+            sentiment = "neutral"
+            if any(_keyword_matches(headline, k) for k in ("关税", "war", "战争", "制裁", "疫情", "导弹", "袭击", "加息")):
+                sentiment = "negative"
+            elif any(_keyword_matches(headline, k) for k in ("降息", "QE", "量化宽松", "利好", "上涨")):
+                sentiment = "positive"
         
         # 关键词优先判断 category
         category = "E"
@@ -137,13 +156,27 @@ class EventCapture(EDTModule):
             category = "D"
         elif any(_keyword_matches(headline, k) for k in ("virus", "疫情")):
             category = "B"
-        elif any(_keyword_matches(headline, k) for k in ("fed", "rate", "policy", "fomc")):
+        elif any(_keyword_matches(headline, k) for k in ("fed", "rate", "policy", "fomc", "央行", "降息", "加息")):
             category = "E"
         
-        # event_type 从语义分析获取
-        event_type = semantic_out.get("event_type", "unknown")
+        # event_type: AI有就用，没有就用关键词判断
+        if use_ai and semantic_out:
+            event_type = semantic_out.get("event_type", "unknown")
+        else:
+            # 关键词判断 event_type
+            event_type = "unknown"
+            if any(_keyword_matches(headline, k) for k in ("tariff", "关税", "贸易战", "出口管制")):
+                event_type = "tariff"
+            elif any(_keyword_matches(headline, k) for k in ("war", "战争", "地缘", "制裁", "导弹", "袭击")):
+                event_type = "geo_political"
+            elif any(_keyword_matches(headline, k) for k in ("疫情", "病毒", "流感")):
+                event_type = "pandemic"
+            elif any(_keyword_matches(headline, k) for k in ("降息", "加息", "央行", "利率", "QE", "量化宽松")):
+                event_type = "monetary"
+            elif any(_keyword_matches(headline, k) for k in ("财报", "营收", "盈利", "季度")):
+                event_type = "earnings"
         
-        ai_reason = f"ai({semantic_out.get('reason', '')})" + (f"+keyword_bonus({bonus})" if bonus > 0 else "")
+        ai_reason = f"ai({semantic_out.get('reason', '')})" + (f"+keyword_bonus({bonus})" if bonus > 0 else "") if not use_ai else ai_reason
         
         threshold = _safe_float(
             self._get_config(
@@ -153,15 +186,20 @@ class EventCapture(EDTModule):
             70.0,
         )
 
-        if ai_verdict == "hit" and ai_confidence >= threshold:
-            captured = True
-            capture_source = "ai"
-        elif keyword_matched:
+        # 捕获判断：AI hit 或者关键词匹配都捕获
+        if keyword_matched:
             captured = True
             capture_source = "rules"
+        elif ai_verdict == "hit" and ai_confidence >= threshold:
+            captured = True
+            capture_source = "ai"
         else:
             captured = False
             capture_source = "none"
+        
+        # 如果是关键词回退，加 reason
+        if not use_ai and keyword_matched:
+            ai_reason = f"keyword_fallback({event_type},{sentiment})+keyword_bonus({bonus})"
 
         return ModuleOutput(
             status=ModuleStatus.SUCCESS,

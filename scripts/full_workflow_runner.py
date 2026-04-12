@@ -8,6 +8,11 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from conduction_mapper import ConductionMapper
 from fatigue_calculator import FatigueCalculator

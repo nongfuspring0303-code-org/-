@@ -19,6 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import quantiles
 from typing import Any, Dict, List, Sequence
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from ai_event_intel import NewsIngestion
 from conduction_mapper import ConductionMapper

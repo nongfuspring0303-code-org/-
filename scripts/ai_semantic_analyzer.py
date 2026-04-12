@@ -17,6 +17,7 @@ ZAI_BASE_URL = "https://api.z.ai/api/paas/v4"
 class SemanticAnalyzer:
     def __init__(self, config_path: str | None = None):
         self.config = ConfigCenter(config_path=config_path)
+        self.model_name = self._model_name() or "glm-4.7-flash"
 
     def _semantic_cfg(self) -> Dict[str, Any]:
         runtime = self.config.data.get("runtime", {}) if isinstance(self.config.data, dict) else {}
@@ -204,7 +205,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "confidence": 50,
                 "recommended_chain": "",
                 "recommended_stocks": [],
-                "reason": "glm-4.7-flash api key missing",
+                "reason": f"{self.model_name} api key missing",
             }
 
         try:
@@ -213,7 +214,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": model or "glm-4.7-flash",
+                "model": model or self.model_name,
                 "messages": [
                     {"role": "user", "content": prompt}
                 ],
@@ -240,7 +241,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                         "confidence": parsed.get("confidence", 50),
                         "recommended_chain": parsed.get("recommended_chain", ""),
                         "recommended_stocks": parsed.get("recommended_stocks", []),
-                        "reason": parsed.get("reason", "glm-4.7-flash api response"),
+                        "reason": parsed.get("reason", f"{self.model_name} api response"),
                     }
                 except json.JSONDecodeError:
                     return {
@@ -249,7 +250,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                         "confidence": 50,
                         "recommended_chain": "",
                         "recommended_stocks": [],
-                        "reason": f"glm-4.7-flash response parsing failed: {content[:200]}",
+                        "reason": f"{self.model_name} response parsing failed: {content[:200]}",
                     }
 
             return {
@@ -258,7 +259,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "confidence": 50,
                 "recommended_chain": "",
                 "recommended_stocks": [],
-                "reason": "glm-4.7-flash no choices returned",
+                "reason": f"{self.model_name} no choices returned",
             }
 
         except requests.exceptions.Timeout:
@@ -268,7 +269,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "confidence": 50,
                 "recommended_chain": "",
                 "recommended_stocks": [],
-                "reason": "glm-4.7-flash timeout",
+                "reason": f"{self.model_name} timeout",
             }
         except requests.exceptions.RequestException as e:
             return {
@@ -277,7 +278,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "confidence": 50,
                 "recommended_chain": "",
                 "recommended_stocks": [],
-                "reason": f"glm-4.7-flash API error: {str(e)[:100]}",
+                "reason": f"{self.model_name} API error: {str(e)[:100]}",
             }
         except Exception as e:
             return {
@@ -286,7 +287,7 @@ recommended_stocks: 推荐的股票列表（可选），格式为股票代码数
                 "confidence": 50,
                 "recommended_chain": "",
                 "recommended_stocks": [],
-                "reason": f"glm-4.7-flash error: {str(e)[:100]}",
+                "reason": f"{self.model_name} error: {str(e)[:100]}",
             }
 
     def analyze(self, headline: str, raw_text: str = "") -> Dict[str, Any]:

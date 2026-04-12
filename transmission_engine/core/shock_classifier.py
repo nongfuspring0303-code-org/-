@@ -32,6 +32,7 @@ class ShockClassifier:
         self.config_dir = config_dir or base / "configs"
         self.event_type_map = self._load_yaml(self.config_dir / "event_type_lv2_mapping.yaml")
         self.event_to_shock = self._load_yaml(self.config_dir / "event_to_shock.yaml")
+        self.gate_policy = self._load_yaml(self.config_dir / "gate_policy.yaml")
 
     def classify(
         self,
@@ -44,9 +45,10 @@ class ShockClassifier:
         event_type = self._match_event_type(category, text)
         shock_profile = self._match_shock_profile(event_type["event_type_lv2"])
 
-        classification_confidence = 55
+        cfg = self.gate_policy.get("conduction_mapper", {}) if isinstance(self.gate_policy, dict) else {}
+        classification_confidence = int(cfg.get("classification_confidence_base", 55))
         if event_type.get("matched_keywords"):
-            classification_confidence = 75
+            classification_confidence = int(cfg.get("classification_confidence_keyword", 75))
 
         market_impact_confidence = self._severity_score(severity)
 

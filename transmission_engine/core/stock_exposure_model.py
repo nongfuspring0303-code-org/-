@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
-import yaml
-
 from scripts.config_center import ConfigCenter
 
 
@@ -23,8 +21,11 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
 
 def load_premium_pool(pool_path: Path | None = None) -> Dict[str, Dict[str, Any]]:
     path = pool_path or (_root() / "configs" / "premium_stock_pool.yaml")
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+    cfg_center = ConfigCenter()
+    cfg_center.register("premium_stock_pool", path)
+    cfg = cfg_center.get_registered("premium_stock_pool", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
     out: Dict[str, Dict[str, Any]] = {}
     for item in cfg.get("stocks", []):
         symbol = str(item.get("symbol", "")).strip().upper()
@@ -35,8 +36,11 @@ def load_premium_pool(pool_path: Path | None = None) -> Dict[str, Dict[str, Any]
 
 def load_event_exposure_matrix(matrix_path: Path | None = None) -> Dict[str, Dict[str, float]]:
     path = matrix_path or (_root() / "configs" / "event_exposure_matrix.yaml")
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+    cfg_center = ConfigCenter()
+    cfg_center.register("event_exposure_matrix", path)
+    cfg = cfg_center.get_registered("event_exposure_matrix", {})
+    if not isinstance(cfg, dict):
+        cfg = {}
     matrix = cfg.get("matrix", {})
     out: Dict[str, Dict[str, float]] = {}
     for symbol, mapping in matrix.items():

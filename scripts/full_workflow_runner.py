@@ -33,20 +33,8 @@ class FullWorkflowRunner:
         self.lifecycle = LifecycleManager(config_path=config_path)
         self.state_store = EventStateStore(db_path=state_db_path)
 
-<<<<<<< HEAD
         fatigue_config_path = Path(__file__).resolve().parent.parent / "configs" / "fatigue_config.yaml"
         self.fatigue = FatigueCalculator(config_path=str(fatigue_config_path), state_store=self.state_store)
-=======
-        # 加载 fatigue_config.yaml 并传递给 FatigueCalculator
-        import yaml
-        fatigue_config_path = Path(__file__).resolve().parent.parent / "configs" / "fatigue_config.yaml"
-        fatigue_config = None
-        if fatigue_config_path.exists():
-            with open(fatigue_config_path, 'r', encoding='utf-8') as f:
-                fatigue_config = yaml.safe_load(f)
-
-        self.fatigue = FatigueCalculator(config_path=fatigue_config_path, state_store=self.state_store)
->>>>>>> 6aeb243 (feat: enhance FatigueCalculator with SQLite integration and configurable thresholds)
         self.conduction = ConductionMapper(config_path=config_path)
         self.validation = MarketValidator(config_path=config_path)
         self.scorer = SignalScorer(config_path=config_path)

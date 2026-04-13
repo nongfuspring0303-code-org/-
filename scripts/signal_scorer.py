@@ -154,14 +154,6 @@ class SignalScorer(EDTModule):
         # 这里的 policy_intervention 应该指"额外"的政策干预，如救市计划
         # 但由于难以区分，我们改为增强方向：提高置信度等级
         if raw.get("policy_intervention") == "STRONG":
-            # 强政策干预增强信号：提升置信度等级
-            # G4 -> G3, G3 -> G2, 保持更高等级不变
-            if tier == "G4":
-                tier = "G3"
-                position_pct = 0.2
-            elif tier == "G3":
-                tier = "G2"
-                position_pct = 0.5
             adjustments.append("policy_intervention_strength_boost")
 
         # Narrative模式: 降仓50%

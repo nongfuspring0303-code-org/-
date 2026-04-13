@@ -60,29 +60,10 @@ class SemanticAnalyzer:
         model = self._semantic_cfg().get("model", "")
         return str(model or "")
 
-    def _load_env_from_bash_profile(self, env_name: str) -> None:
-        """Load env from ~/.bash_profile if not set."""
-        if os.getenv(env_name):
-            return
-        
-        bash_profile = Path.home() / ".bash_profile"
-        if bash_profile.exists():
-            with open(bash_profile) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith(f"export {env_name}="):
-                        _, value = line.split("=", 1)
-                        os.environ[env_name] = value.strip().strip('"')
-                        break
-
     def _api_key(self) -> str:
         semantic = self._semantic_cfg()
         env_name = str(semantic.get("api_key_env", "ZAI_API_KEY") or "ZAI_API_KEY").strip()
         env_names = [env_name, "GLM_API_KEY", "OPENCLAW_GLM_API_KEY"]
-
-        # Auto-load from bash_profile if needed
-        for name in env_names:
-            self._load_env_from_bash_profile(name)
 
         # Priority: configured env > legacy envs > .env.local > (none)
         for name in env_names:

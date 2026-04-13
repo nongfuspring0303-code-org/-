@@ -59,8 +59,8 @@ class SemanticAnalyzer:
         return str(model or "")
 
     def _api_key(self) -> str:
-        # Priority: env > .env.local > (none)
-        env_name = "ZAI_API_KEY"
+        semantic = self._semantic_cfg()
+        env_name = str(semantic.get("api_key_env", "ZAI_API_KEY") or "ZAI_API_KEY").strip()
 
         # 1. Environment variable
         value = os.getenv(env_name, "").strip()
@@ -204,13 +204,11 @@ recommended_chain: 推荐的分析链（可选）
 
         api_key = self._api_key()
         if not api_key:
-            return {
-                "event_type": "unknown",
-                "sentiment": "neutral",
-                "confidence": 50,
-                "recommended_chain": "",
-                "reason": "glm-4.7-flash api key missing",
-            }
+            return self._abstain_response(
+                fallback_reason="api_key_missing",
+                provider=self._provider_name(),
+                model=model or self._model_name(),
+            )
 
         try:
             headers = {
@@ -351,7 +349,7 @@ recommended_chain: 推荐的分析链（可选）
         elapsed = int((time.perf_counter() - started) * 1000.0)
         out = self._coerce_output(payload if isinstance(payload, dict) else {}, provider, model, elapsed)
 
-        if out["confidence"] < self._min_confidence():
+        if out["confidence"] < self._min_confidence() and not out["fallback_reason"]:
             out["verdict"] = "abstain"
             out["semantic_status"] = "fallback"
             out["fallback_reason"] = "confidence_below_threshold"
@@ -369,7 +367,8 @@ recommended_chain: 推荐的分析链（可选）
 
         out["verdict"] = "abstain"
         out["semantic_status"] = "fallback"
-        out["fallback_reason"] = "chain_missing"
+        if not out["fallback_reason"]:
+            out["fallback_reason"] = "chain_missing"
         if not out["reason"]:
             out["reason"] = "missing recommended chain"
         return out

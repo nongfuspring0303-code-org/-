@@ -22,8 +22,8 @@ def test_contract_does_not_read_shell_profile_for_key_resolution(tmp_path, monke
     out = SemanticAnalyzer(config_path=str(cfg)).analyze("headline", "raw")
 
     assert out["verdict"] == "abstain"
-    assert out["fallback_reason"] == "confidence_below_threshold"
-    assert out["reason"] == "glm-4.7-flash api key missing"
+    assert out["fallback_reason"] == "api_key_missing"
+    assert out["reason"] == "api_key_missing"
     assert out["semantic_status"] == "fallback"
     assert out["provider"] == "glm-4.7-flash"
     assert out["model"] == "glm-4.7-flash"

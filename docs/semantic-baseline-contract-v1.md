@@ -1,5 +1,8 @@
 # Semantic Baseline Contract v1
 
+This contract is aligned to the current analyzer/test surface in PR #51.
+Items that are not part of the current closed loop are intentionally omitted from the contract instead of being pre-declared as required.
+
 ## 1. Responsibilities
 
 The semantic layer is only responsible for producing the following fields:
@@ -7,7 +10,7 @@ The semantic layer is only responsible for producing the following fields:
 - `event_type`
 - `sentiment`
 - `confidence`
-- `narrative_tags`
+- `recommended_chain`
 
 These outputs may be used by downstream modules as semantic signals, but the semantic layer itself does not own downstream policy or execution decisions.
 
@@ -17,7 +20,7 @@ The semantic layer must not directly modify:
 
 - `score_tier`
 - `position_pct`
-- `execution action`
+- `execution_action`
 
 Any downstream effect on these fields must come from non-semantic modules or explicit downstream policy logic.
 
@@ -28,7 +31,7 @@ The semantic configuration baseline is limited to:
 - `provider`
 - `model`
 - `timeout_ms`
-- `fallback_mode`
+- `api_key_env`
 
 These values must be loaded from repository configuration and local environment sources only.
 
@@ -39,12 +42,22 @@ Allowed key sources:
 - environment variables
 - `.env.local`
 
+Supported environment selector:
+
+- `api_key_env` in semantic config, defaulting to `ZAI_API_KEY`
+
 Forbidden key sources:
 
 - `~/.bash_profile`
 - shell profile auto-loading
 
 The semantic layer must not depend on shell profile side effects for key resolution.
+
+Legacy alias policy:
+
+- legacy aliases are removed in this topic
+- `GLM_API_KEY` and `OPENCLAW_GLM_API_KEY` are not contract-supported resolution targets
+- callers must migrate to the configured `api_key_env` value
 
 ## 5. Observability
 
@@ -84,7 +97,7 @@ If keyword bonus remains enabled, it must satisfy all of the following:
 - the bonus must not directly affect:
   - `score_tier`
   - `position_pct`
-  - `execution action`
+  - `execution_action`
 
 ## 8. Gate Notes
 

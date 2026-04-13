@@ -7,6 +7,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from ai_semantic_analyzer import SemanticAnalyzer
 
 
+def test_contract_document_matches_current_surface():
+    doc = (ROOT / "docs" / "semantic-baseline-contract-v1.md").read_text(encoding="utf-8")
+
+    assert "narrative_tags" not in doc
+    assert "fallback_mode" not in doc
+    assert "execution_action" in doc
+    assert "api_key_env" in doc
+    assert "GLM_API_KEY" in doc
+    assert "OPENCLAW_GLM_API_KEY" in doc
+    assert "legacy aliases are removed in this topic" in doc
+
+
 def test_contract_does_not_read_shell_profile_for_key_resolution(tmp_path, monkeypatch):
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text(
@@ -32,7 +44,7 @@ def test_contract_does_not_read_shell_profile_for_key_resolution(tmp_path, monke
 def test_contract_provider_model_timeout_are_config_only(tmp_path, monkeypatch):
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text(
-        "modules: {}\nruntime:\n  semantic:\n    enabled: true\n    provider: mock_provider\n    model: mock_model\n    timeout_ms: 4321\n",
+        "modules: {}\nruntime:\n  semantic:\n    enabled: true\n    provider: mock_provider\n    model: mock_model\n    timeout_ms: 4321\n    api_key_env: CUSTOM_KEY\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ZAI_API_KEY", "present")
@@ -41,6 +53,7 @@ def test_contract_provider_model_timeout_are_config_only(tmp_path, monkeypatch):
     assert analyzer._provider_name() == "mock_provider"
     assert analyzer._model_name() == "mock_model"
     assert analyzer._timeout_ms() == 4321
+    assert analyzer._semantic_cfg().get("api_key_env") == "CUSTOM_KEY"
 
 
 def test_contract_semantic_failure_uses_unified_fallback(tmp_path, monkeypatch):

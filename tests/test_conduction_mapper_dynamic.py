@@ -139,6 +139,39 @@ def test_conduction_mapper_picks_reloaded_chain_config(tmp_path):
     assert out.data["mapping_source"] == "template:custom_chain"
 
 
+def test_conduction_mapper_uses_ai_recommendations_even_without_symbol_match(monkeypatch):
+    mapper = ConductionMapper()
+    monkeypatch.setattr(
+        mapper.semantic,
+        "analyze",
+        lambda headline, summary: {
+            "recommended_chain": "rate_cut_chain",
+            "recommended_stocks": ["NVDA"],
+            "confidence": 95,
+            "event_type": "monetary",
+            "sentiment": "positive",
+        },
+    )
+
+    out = mapper.run(
+        {
+            "event_id": "ME-E-TEST-006",
+            "category": "E",
+            "severity": "E2",
+            "headline": "Fed signals rate cuts ahead",
+            "summary": "Policy easing expected",
+            "lifecycle_state": "Active",
+            "sector_data": [
+                {"symbol": "XLK", "sector": "Technology", "industry": "Technology", "change_pct": 1.2},
+                {"symbol": "XLF", "sector": "Financial Services", "industry": "Financial Services", "change_pct": 0.8},
+            ],
+        }
+    )
+
+    assert out.status.value == "success"
+    assert any(stock.get("symbol") == "NVDA" and stock.get("source") == "ai" for stock in out.data["stock_candidates"])
+
+
 def test_trade_talk_context_not_overridden_by_broad_tariff_tokens():
     out = ConductionMapper().run(
         {

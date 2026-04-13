@@ -211,7 +211,7 @@ class PremiumStockPool:
         roe_min = self._to_float(self.filters.get("roe_min", 15.0), 15.0)
         mkt_cap_min = self._to_float(self.filters.get("market_cap_billion_min", 500.0), 500.0)
         liq_min = self._to_float(self.filters.get("liquidity_score_min", 0.60), 0.60)
-        return stock.roe > roe_min and stock.market_cap_billion > mkt_cap_min and stock.liquidity_score > liq_min
+        return stock.roe >= roe_min and stock.market_cap_billion >= mkt_cap_min and stock.liquidity_score >= liq_min
 
     def get_stock(self, symbol: str) -> Optional[PremiumStock]:
         return self._stocks_by_symbol.get(str(symbol).strip().upper())

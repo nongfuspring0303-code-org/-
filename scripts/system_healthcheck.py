@@ -418,6 +418,12 @@ def check_external_data_health(mode: str = "dev") -> CheckResult:
 
 def check_canary_source_health(mode: str = "dev") -> CheckResult:
     health = CanarySourceHealth()
+    try:
+        health.collect_once()
+    except Exception as exc:  # noqa: BLE001
+        refresh_error = f"canary refresh failed: {exc}"
+    else:
+        refresh_error = ""
     summary = health.read_summary()
     assessment = health.assess(summary=summary, mode=mode)
     result = CheckResult(
@@ -439,6 +445,8 @@ def check_canary_source_health(mode: str = "dev") -> CheckResult:
             f"30m_new_item_count={recent_30m.get('new_item_count', 0)}",
         ]
     )
+    if refresh_error:
+        result.warnings.append(refresh_error)
     return result
 
 

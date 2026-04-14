@@ -542,9 +542,11 @@ def build_stage(name: str, summary: str, checks: list[CheckResult]) -> StageResu
     )
 
 
-def run_project_checks(mode: str = "dev") -> list[CheckResult]:
-    return [
-        check_env(),
+def run_project_checks(mode: str = "dev", skip_env_check: bool = False) -> list[CheckResult]:
+    checks = []
+    if not skip_env_check:
+        checks.append(check_env())
+    checks.extend([
         check_config(),
         check_chain(),
         check_contract(),
@@ -554,7 +556,8 @@ def run_project_checks(mode: str = "dev") -> list[CheckResult]:
         check_canary_source_health(mode=mode),
         check_external_data_health(mode=mode),
         check_recovery(),
-    ]
+    ])
+    return checks
 
 
 def _stage_status_for_overall(checks: list[CheckResult], mode: str) -> str:
@@ -572,6 +575,7 @@ def main() -> int:
     parser.add_argument("--self-heal", action="store_true", help="Attempt self-heal between self-check and project checks.")
     parser.add_argument("--self-only", action="store_true", help="Only run health-system self-check stages.")
     parser.add_argument("--mode", choices=["dev", "prod"], default="dev", help="Healthcheck strictness mode.")
+    parser.add_argument("--skip-env-check", action="store_true", help="Skip slow ENV check (runs full pytest).")
     args = parser.parse_args()
 
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -589,7 +593,7 @@ def main() -> int:
     stage_project = StageResult(name="PROJECT_CHECK", status="SKIP", summary="Project-wide health check skipped.")
     project_checks: list[CheckResult] = []
     if not args.self_only:
-        project_checks = run_project_checks(mode=args.mode)
+        project_checks = run_project_checks(mode=args.mode, skip_env_check=args.skip_env_check)
         stage_project = build_stage("PROJECT_CHECK", "Project-wide health check after health-system validation.", project_checks)
 
     stage_statuses = [stage_self_check.status, stage_self_recheck.status]

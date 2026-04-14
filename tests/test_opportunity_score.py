@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from opportunity_score import OpportunityScorer, PremiumStockPool, evaluate_direction_consistency
+from opportunity_score import OpportunityScorer, PremiumStock, PremiumStockPool, evaluate_direction_consistency
 
 
 def test_premium_pool_filters_by_threshold_and_membership():
@@ -20,6 +20,55 @@ def test_premium_pool_filters_by_threshold_and_membership():
     assert "NVDA" in symbols
     assert "CAT" in symbols
     assert "UNKNOWN" not in symbols
+
+
+def test_premium_pool_keeps_boundary_values():
+    pool = PremiumStockPool()
+    boundary_stock = PremiumStock(
+        symbol="BOUND",
+        name="Boundary Co",
+        sector="科技",
+        roe=15.0,
+        market_cap_billion=500.0,
+        liquidity_score=0.60,
+        last_price=100.0,
+    )
+    pool._stocks_by_symbol["BOUND"] = boundary_stock
+    pool._static_stocks_by_symbol["BOUND"] = boundary_stock
+
+    filtered = pool.filter_candidates([{"symbol": "BOUND"}])
+    assert [stock.symbol for stock in filtered] == ["BOUND"]
+
+
+def test_premium_pool_reports_stock_sources():
+    pool = PremiumStockPool()
+    static_stock = PremiumStock(
+        symbol="STATIC",
+        name="Static Co",
+        sector="科技",
+        roe=20.0,
+        market_cap_billion=800.0,
+        liquidity_score=0.9,
+        last_price=100.0,
+    )
+    dynamic_stock = PremiumStock(
+        symbol="DYNAMIC",
+        name="Dynamic Co",
+        sector="金融",
+        roe=20.0,
+        market_cap_billion=800.0,
+        liquidity_score=0.9,
+        last_price=80.0,
+        price_source="dynamic_cache",
+    )
+    pool._static_stocks_by_symbol["STATIC"] = static_stock
+    pool._dynamic_stocks_by_symbol["DYNAMIC"] = dynamic_stock
+    pool._stocks_by_symbol["STATIC"] = static_stock
+    pool._stocks_by_symbol["DYNAMIC"] = dynamic_stock
+
+    assert pool.get_stock_source("STATIC") == "static"
+    assert pool.get_stock_source("DYNAMIC") == "dynamic"
+    assert pool.get_stock_source("UNKNOWN") == "unknown"
 
 
 def test_opportunity_card_fields_complete_and_premium_only():

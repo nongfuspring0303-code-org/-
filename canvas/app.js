@@ -309,9 +309,9 @@ function handleSectorUpdate(payload, options = {}) {
 
   STATE.sectorsByTrace[sectorData.trace_id] = sectorData;
   rememberTrace(traceId);
-  if (!STATE.selectedNews || STATE.selectedNews.id === sectorData.trace_id) {
-    STATE.sectors = sectorData;
-  }
+  
+  // 直接使用最新的 sector 数据，不做 trace_id 匹配
+  STATE.sectors = sectorData;
   if (shouldRender) renderSectors();
 }
 
@@ -326,10 +326,12 @@ function handleOpportunityUpdate(payload, options = {}) {
 
   STATE.opportunitiesByTrace[opportunityData.trace_id] = opportunityData;
   rememberTrace(traceId);
-  if (!STATE.selectedNews || STATE.selectedNews.id === opportunityData.trace_id) {
-    STATE.opportunities = opportunityData;
+  
+  // 直接使用最新的 opportunity 数据，不做 trace_id 匹配
+  STATE.opportunities = opportunityData;
+  if (shouldRender) {
+    renderSectors();  // 同时刷新板块显示（包含推导链）
   }
-  if (shouldRender) renderOpportunities();
 }
 
 function generateTraceId() {
@@ -453,9 +455,14 @@ function renderSectors(filter = 'all') {
     return;
   }
   
-  const traceId = STATE.sectors.trace_id;
-  const newsItem = STATE.news.find(n => n.id === traceId);
-  const opportunitiesData = STATE.opportunitiesByTrace[traceId] || { opportunities: [] };
+  const newsItem = STATE.selectedNews;
+  
+  // 使用最新的 opportunity 数据（不按 trace_id 匹配，因为 trace_id 可能不同）
+  let opportunitiesData = { opportunities: [] };
+  const allOpps = Object.values(STATE.opportunitiesByTrace);
+  if (allOpps.length > 0) {
+    opportunitiesData = allOpps[allOpps.length - 1];
+  }
   
   let sectors = STATE.sectors.sectors;
   if (filter !== 'all') {

@@ -64,7 +64,17 @@ parent_doc: 主题板块催化持续性引擎 v1.0
 - `pass_threshold = 100% 关键断言通过`
 - `on_fail_action = block_merge`
 
-### E2E-05 replay 一致性样本
+### E2E-05 主链缺失降级样本
+断言：
+- final_decision_source = theme_only_degraded
+- fallback_reason = MAINCHAIN_MISSING
+- safe_to_consume = false
+样本与门槛：
+- `sample_id = mainchain_missing_theme_only_degraded`
+- `pass_threshold = 100% 关键断言通过`
+- `on_fail_action = block_merge`
+
+### E2E-06 replay 一致性样本
 断言：
 - 同快照同配置 replay 结果一致
 - 不一致时有 consistency_break_reason

@@ -283,14 +283,17 @@ function handleEventUpdate(payload, options = {}) {
     STATE.news.unshift(event);
     trimArray(STATE.news, MAX_NEWS_ITEMS);
     trimArray(STATE.events, MAX_NEWS_ITEMS);
+    
+    // 新新闻到达时，设置当前选中的新闻
+    if (!STATE.selectedNews) {
+      STATE.selectedNews = event;
+    }
   }
   STATE.lastNewsAt = event.timestamp || event.news_timestamp || null;
   updateLastNewsAt(STATE.lastNewsAt);
   
   // 自动选择最新新闻，触发推导链显示
-  if (STATE.news.length > 0 && !STATE.selectedNews) {
-    selectNews(STATE.news[0].id);
-  } else if (STATE.news.length > 0 && STATE.selectedNews && STATE.selectedNews.id === traceId) {
+  if (STATE.news.length > 0 && STATE.selectedNews && STATE.selectedNews.id === traceId) {
     selectNews(traceId);
   }
   
@@ -310,8 +313,7 @@ function handleSectorUpdate(payload, options = {}) {
   STATE.sectorsByTrace[sectorData.trace_id] = sectorData;
   rememberTrace(traceId);
   
-  // 直接使用最新的 sector 数据，不做 trace_id 匹配
-  STATE.sectors = sectorData;
+  // 不自动更新，只存储
   if (shouldRender) renderSectors();
 }
 
@@ -327,11 +329,8 @@ function handleOpportunityUpdate(payload, options = {}) {
   STATE.opportunitiesByTrace[opportunityData.trace_id] = opportunityData;
   rememberTrace(traceId);
   
-  // 直接使用最新的 opportunity 数据，不做 trace_id 匹配
-  STATE.opportunities = opportunityData;
-  if (shouldRender) {
-    renderSectors();  // 同时刷新板块显示（包含推导链）
-  }
+  // 不自动更新，只存储
+  if (shouldRender) renderSectors();
 }
 
 function generateTraceId() {
@@ -463,36 +462,19 @@ function renderSectors(filter = 'all') {
   }
   
   const newsItem = STATE.selectedNews;
-  const currentTraceId = STATE.sectors.trace_id;
-  
-  // 显示当前板块数据和对应的新闻时间戳
-  const sectorTimestamp = STATE.sectors.timestamp;
-  
-  // 使用最新的 opportunity 数据
-  let opportunitiesData = STATE.opportunities;
-  if (!opportunitiesData || !opportunitiesData.opportunities || opportunitiesData.opportunities.length === 0) {
-    const allOpps = Object.values(STATE.opportunitiesByTrace);
-    if (allOpps.length > 0) {
-      opportunitiesData = allOpps[allOpps.length - 1];
-    } else {
-      opportunitiesData = { opportunities: [] };
-    }
-  }
+  const opportunitiesData = STATE.opportunities;
   
   let sectors = STATE.sectors.sectors;
   if (filter !== 'all') {
     sectors = sectors.filter(s => s.direction === filter);
   }
   
-  // 添加数据来源说明
-  const dataInfo = `<div class="data-info">📊 数据时间: ${formatTimestamp(sectorTimestamp || STATE.sectors.timestamp)}</div>`;
-  
   container.innerHTML = sectors.map(sector => {
-    const sectorOpps = opportunitiesData.opportunities.filter(o => o.sector === sector.name);
+    const sectorOpps = opportunitiesData.opportunities ? 
+      opportunitiesData.opportunities.filter(o => o.sector === sector.name) : [];
     return `
       <div class="sector-card ${escapeHtml(String(sector.direction || '').toLowerCase())}" 
            data-sector-name="${escapeHtml(sector.name)}">
-        ${dataInfo}
         ${renderDerivationChain(newsItem, sector, sectorOpps)}
       </div>
     `;

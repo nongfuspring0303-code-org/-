@@ -440,15 +440,21 @@ function selectNews(id) {
   
   STATE.selectedNews = news;
   
-  // sector/opportunity 数据按时间更新，用最新的即可（trace_id 是固定的 TRC-ME-E-xxx）
-  const sectorTraceId = Object.keys(STATE.sectorsByTrace)[0];
-  const sectorData = STATE.sectorsByTrace[sectorTraceId];
-  const oppData = STATE.opportunitiesByTrace[sectorTraceId];
+  // sector/opportunity 数据用最新的（最后一个 key）
+  const allSectorKeys = Object.keys(STATE.sectorsByTrace);
+  const allOppKeys = Object.keys(STATE.opportunitiesByTrace);
+  
+  const sectorTraceId = allSectorKeys[allSectorKeys.length - 1];
+  const oppTraceId = allOppKeys[allOppKeys.length - 1];
+  
+  const sectorData = sectorTraceId ? STATE.sectorsByTrace[sectorTraceId] : null;
+  const oppData = oppTraceId ? STATE.opportunitiesByTrace[oppTraceId] : null;
   
   STATE.sectors = sectorData || { trace_id: id, sectors: [], conduction_chain: [] };
   STATE.opportunities = oppData || { trace_id: id, opportunities: [] };
   
   console.log('selectNews:', id);
+  console.log('sectorKeys:', allSectorKeys, 'oppKeys:', allOppKeys);
   console.log('sectors:', STATE.sectors);
   console.log('opportunities:', STATE.opportunities);
   

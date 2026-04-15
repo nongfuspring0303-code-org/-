@@ -463,12 +463,20 @@ function renderSectors(filter = 'all') {
   }
   
   const newsItem = STATE.selectedNews;
+  const currentTraceId = STATE.sectors.trace_id;
   
-  // 使用最新的 opportunity 数据（不按 trace_id 匹配，因为 trace_id 可能不同）
-  let opportunitiesData = { opportunities: [] };
-  const allOpps = Object.values(STATE.opportunitiesByTrace);
-  if (allOpps.length > 0) {
-    opportunitiesData = allOpps[allOpps.length - 1];
+  // 显示当前板块数据和对应的新闻时间戳
+  const sectorTimestamp = STATE.sectors.timestamp;
+  
+  // 使用最新的 opportunity 数据
+  let opportunitiesData = STATE.opportunities;
+  if (!opportunitiesData || !opportunitiesData.opportunities || opportunitiesData.opportunities.length === 0) {
+    const allOpps = Object.values(STATE.opportunitiesByTrace);
+    if (allOpps.length > 0) {
+      opportunitiesData = allOpps[allOpps.length - 1];
+    } else {
+      opportunitiesData = { opportunities: [] };
+    }
   }
   
   let sectors = STATE.sectors.sectors;
@@ -476,11 +484,15 @@ function renderSectors(filter = 'all') {
     sectors = sectors.filter(s => s.direction === filter);
   }
   
+  // 添加数据来源说明
+  const dataInfo = `<div class="data-info">📊 数据时间: ${formatTimestamp(sectorTimestamp || STATE.sectors.timestamp)}</div>`;
+  
   container.innerHTML = sectors.map(sector => {
     const sectorOpps = opportunitiesData.opportunities.filter(o => o.sector === sector.name);
     return `
       <div class="sector-card ${escapeHtml(String(sector.direction || '').toLowerCase())}" 
            data-sector-name="${escapeHtml(sector.name)}">
+        ${dataInfo}
         ${renderDerivationChain(newsItem, sector, sectorOpps)}
       </div>
     `;

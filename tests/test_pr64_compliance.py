@@ -28,17 +28,17 @@ class TestPR64Compliance(unittest.TestCase):
             "trade_grade": "A",
             "primary_theme": "AI_Infrastructure"
         }
-        
+
         # 1. 验证配置键读取对齐
         # 注意：这里从 self.config['modules'] 中找，如果找不到打印调试
         target_cfg = self.config['modules'].get('ThemeCatalystEngine', {})
         if not target_cfg:
             # 兼容性处理：尝试各种可能的 Key 名
             target_cfg = self.config['modules'].get('theme_catalyst_engine', {})
-            
+
         params = target_cfg.get('params', {})
         expected_limit = params.get('max_grade_risk_off', 'C')
-        
+
         out = self.runner._apply_theme_routing(payload)
         self.assertEqual(out['trade_grade'], expected_limit, f"代码未能正确读取 YAML 中的 max_grade_risk_off. Expected: {expected_limit}, Got: {out['trade_grade']}")
         self.assertTrue(out['theme_capped_by_macro'], "RISK_OFF 下评级削减未生效")
@@ -52,12 +52,12 @@ class TestPR64Compliance(unittest.TestCase):
             "current_state": "CONTINUATION",
             "primary_theme": "AI"
         }
-        
+
         # 测试 success
         obs_success = ThemeObservabilityLogger.log_observability_event(theme_output, "TRC-1", "success")
         self.assertEqual(obs_success['route_hit_rate'], 1)
         self.assertEqual(obs_success['route_reject_rate'], 0)
-        
+
         # 测试 blocked
         obs_blocked = ThemeObservabilityLogger.log_observability_event(theme_output, "TRC-2", "blocked")
         self.assertEqual(obs_blocked['route_hit_rate'], 0)
@@ -123,7 +123,7 @@ class TestPR64Compliance(unittest.TestCase):
         """证明冲突类型口径：缺省值应为 unknown_conflict"""
         # 当 macro_regime 为 None 时，进入缺失主链逻辑，应保留初始 unknown_conflict
         payload_none = {
-            "macro_regime": None, 
+            "macro_regime": None,
             "trade_grade": "B"
         }
         out_def = self.runner._apply_theme_routing(payload_none)

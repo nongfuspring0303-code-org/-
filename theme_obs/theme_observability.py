@@ -45,7 +45,7 @@ class ThemeObservabilityLogger:
         state = theme_output.get("current_state", "DEAD")
         has_theme = theme_output.get("primary_theme", "unknown") != "unknown"
         replay_consistency_rate, replay_consistency_mode = ThemeObservabilityLogger._compute_replay_consistency(theme_output)
-        
+
         obs = {
             # 基础字段
             "event_id": theme_output.get("event_id", trace_id),
@@ -73,21 +73,21 @@ class ThemeObservabilityLogger:
             "market_data_missing_rate": 1 if theme_output.get("error_code") == "MARKET_DATA_MISSING" else 0,
             "replay_consistency_rate": replay_consistency_rate,
             "replay_consistency_mode": replay_consistency_mode,
-            
+
             # 状态层
             "state_distribution": state,
             "continuation_rate": 1 if state == "CONTINUATION" else 0,
             "exhaustion_rate": 1 if state == "EXHAUSTION" else 0,
-            
+
             # 输出层
             "trade_grade_distribution": grade,
             "degraded_output_rate": 1 if theme_output.get("final_decision_source") == "theme_only_degraded" else 0,
             "safe_to_consume_false_rate": 1 if not safe else 0
         }
-        
+
         logger = logging.getLogger("theme_observability")
         logger.info("THEME_OBSERVABILITY_LOG: %s", json.dumps(obs))
-        
+
         # P3: Observability anomaly (latency too high or missing fields)
         latency_thresh = int(os.environ.get("THEME_P3_LATENCY_THRESH_MS", 5000))
         if latency_ms >= latency_thresh:

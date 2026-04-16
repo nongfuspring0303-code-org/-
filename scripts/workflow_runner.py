@@ -308,10 +308,10 @@ class WorkflowRunner:
         macro_regime = payload.get("macro_regime")
         trade_grade = payload.get("trade_grade", "D")
         theme_params = self._theme_params_from_config()
-        
+
         # 默认契约信息
         contract_cfg = theme_params.get("default_contract", {})
-        
+
         theme_output = {
             "contract_name": "theme_catalyst_engine",
             "contract_version": contract_cfg.get("version", "v1.0"),
@@ -319,16 +319,16 @@ class WorkflowRunner:
             "safe_to_consume": payload.get("safe_to_consume", False),
             "fallback_reason": payload.get("fallback_reason", "unknown_fallback"),
             "error_code": payload.get("error_code"),
-            
+
             "primary_theme": payload.get("primary_theme", "unknown"),
             "current_state": payload.get("current_state", "DEAD"),
             "continuation_probability": payload.get("continuation_probability", 0.0),
             "trade_grade": trade_grade,
             "candidate_audit_pool": payload.get("candidate_audit_pool", []),
-            
+
             "macro_regime": macro_regime,
             "macro_override_reason": payload.get("macro_override_reason", "none"),
-            
+
             "conflict_flag": False,
             "conflict_type": "unknown_conflict",
             "final_decision_source": "theme_only",
@@ -340,12 +340,12 @@ class WorkflowRunner:
         if macro_regime == "RISK_OFF":
             theme_output["conflict_flag"] = True
             theme_output["conflict_type"] = "C1_market_reject"
-            
+
             # 对齐扁平化配置项
             max_grade_str = theme_params.get("max_grade_risk_off", "C").upper()
             max_val = GRADE_RANK.get(max_grade_str, 2)
             current_val = GRADE_RANK.get(str(trade_grade).upper(), 1)
-            
+
             if current_val > max_val:
                 theme_output["trade_grade"] = max_grade_str
                 theme_output["theme_capped_by_macro"] = True
@@ -379,7 +379,7 @@ class WorkflowRunner:
             theme_output["safe_to_consume"] = False
             theme_output["theme_capped_by_macro"] = True
             theme_output["final_trade_cap"] = missing_cfg.get("action", "INTRADAY")
-            
+
         return theme_output
 
     @staticmethod

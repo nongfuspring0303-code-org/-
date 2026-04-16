@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 
 import yaml
 try:
-    from logging.theme_observability import ThemeObservabilityLogger
+    from theme_obs.theme_observability import ThemeObservabilityLogger
 except ImportError:
     ThemeObservabilityLogger = None
 
@@ -373,7 +373,7 @@ class WorkflowRunner:
         if macro_regime is None:
             missing_cfg = theme_params.get("missing_mainchain", {})
             theme_output["conflict_flag"] = True
-            theme_output["conflict_type"] = "C4_mainchain_lost"
+            theme_output["conflict_type"] = "none"  # 规范中未定义 C4，收口到 none
             theme_output["final_decision_source"] = "theme_only_degraded"
             theme_output["fallback_reason"] = "MAINCHAIN_MISSING"
             theme_output["safe_to_consume"] = False

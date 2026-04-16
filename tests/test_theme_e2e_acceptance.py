@@ -109,7 +109,8 @@ def test_theme_e2e_samples_are_executable_and_all_pass():
     samples = _load_samples()
     outputs = _simulated_outputs()
 
-    assert len(samples) == 6
+    ids = {item["case_id"] for item in samples}
+    assert ids == {"E2E-01", "E2E-02", "E2E-03", "E2E-04", "E2E-05", "E2E-06"}
     for sample in samples:
         case_id = sample["case_id"]
         assert case_id in outputs

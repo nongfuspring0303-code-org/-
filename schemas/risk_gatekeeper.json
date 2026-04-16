@@ -99,7 +99,7 @@
       },
       "theme_output": {
         "type": "object",
-        "description": "主题副链输出（A2.5），仅用于主链消费约束，不改变主链优先级",
+        "description": "主题副链输出（A2.5，可选），仅用于主链消费约束，不改变主链优先级",
         "properties": {
           "event_id": {"type": "string"},
           "event_scope": {"type": "string", "const": "sector_theme"},

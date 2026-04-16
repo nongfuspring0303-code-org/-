@@ -2,6 +2,12 @@ $schema: http://json-schema.org/draft-07/schema#
 title: Theme Contract Mapping Schema
 description: 主题板块催化持续性引擎字段映射表（Consumer Contract Mapping 工程化落地）
 version: v1.0
+alignment:
+  frozen_contract_aligned: true
+  consumer_mapping_table_aligned: true
+  base_legacy_field_count: 15
+  output_envelope_extensions: [contract_name, contract_version, producer_module]
+  effective_field_count: 17
 
 fields:
   - field: primary_theme

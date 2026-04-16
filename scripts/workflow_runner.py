@@ -25,6 +25,8 @@ import yaml
 try:
     from theme_obs.theme_observability import ThemeObservabilityLogger
 except ImportError:
+    import logging
+    logging.error("OBSERVABILITY_MODULE_MISSING: theme_obs.theme_observability failed to load. Observability link is BROKEN.")
     ThemeObservabilityLogger = None
 
 from edt_module_base import ModuleStatus
@@ -328,10 +330,10 @@ class WorkflowRunner:
             "macro_override_reason": payload.get("macro_override_reason", "none"),
             
             "conflict_flag": False,
-            "conflict_type": "none",
+            "conflict_type": "unknown_conflict",
             "final_decision_source": "theme_only",
             "theme_capped_by_macro": False,
-            "final_trade_cap": "STANDARD",
+            "final_trade_cap": "INTRADAY",
         }
 
         # 核心主副链路由逻辑
@@ -339,13 +341,11 @@ class WorkflowRunner:
             theme_output["conflict_flag"] = True
             theme_output["conflict_type"] = "C1_market_reject"
             
-            # 从配置获取上限评级
-            risk_off_cfg = theme_params.get("risk_off", {})
-            max_grade_str = risk_off_cfg.get("max_grade", "C").upper()
+            # 对齐扁平化配置项
+            max_grade_str = theme_params.get("max_grade_risk_off", "C").upper()
             max_val = GRADE_RANK.get(max_grade_str, 2)
             current_val = GRADE_RANK.get(str(trade_grade).upper(), 1)
             
-            # 策略：如果不幸当前的评级(如A)高于上限(如C)，执行强制削减
             if current_val > max_val:
                 theme_output["trade_grade"] = max_grade_str
                 theme_output["theme_capped_by_macro"] = True
@@ -353,7 +353,7 @@ class WorkflowRunner:
             else:
                 theme_output["theme_capped_by_macro"] = False
 
-            theme_output["final_trade_cap"] = risk_off_cfg.get("final_trade_cap", "INTRADAY")
+            theme_output["final_trade_cap"] = theme_params.get("final_trade_cap_risk_off", "INTRADAY")
             theme_output["final_decision_source"] = "mainchain_capped_theme"
 
         elif macro_regime == "MIXED":

@@ -33,6 +33,8 @@ REPORT_PATH = LOGS_DIR / "system_health_report.json"
 
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     import yaml
@@ -176,6 +178,27 @@ def check_env() -> CheckResult:
                 result.evidence.append(output.splitlines()[0])
             break
 
+    return result
+
+
+def check_theme_obs() -> CheckResult:
+    result = CheckResult(name="THEME_OBS", status="GREEN", summary="Theme observability module is loadable and syntactically sound.")
+    
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("theme_obs.theme_observability")
+        if spec is None:
+            raise ImportError("theme_obs.theme_observability module not found")
+        
+        # Try to compile to ensure no syntax errors
+        obs_path = ROOT / "theme_obs" / "theme_observability.py"
+        compile_source(obs_path)
+        result.evidence.append(f"module_path={obs_path.name}")
+    except Exception as exc:
+        result.status = "RED"
+        result.summary = "Theme observability module failed to load or has syntax errors."
+        result.errors.append(str(exc))
+        
     return result
 
 
@@ -564,6 +587,7 @@ def run_project_checks(mode: str = "dev", skip_env_check: bool = False) -> list[
         checks.append(check_env())
     checks.extend([
         check_config(),
+        check_theme_obs(),
         check_chain(),
         check_contract(),
         check_test_runtime(),

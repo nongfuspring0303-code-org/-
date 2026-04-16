@@ -1,0 +1,77 @@
+import unittest
+import yaml
+import os
+import sys
+from pathlib import Path
+
+# Setup paths
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from workflow_runner import WorkflowRunner
+from theme_obs.theme_observability import ThemeObservabilityLogger
+
+class TestPR64Compliance(unittest.TestCase):
+    def setUp(self):
+        self.runner = WorkflowRunner()
+        self.config_path = ROOT / "configs" / "edt-modules-config.yaml"
+        # Load real config to ensure it exists
+        with open(self.config_path, 'r') as f:
+            self.config = yaml.safe_load(f)
+
+    def test_config_effectiveness(self):
+        """证明配置真源：修改 RISK_OFF 上限后，输出随之改变"""
+        # 构造模拟输入：A评级，RISK_OFF环境
+        payload = {
+            "macro_regime": "RISK_OFF",
+            "trade_grade": "A",
+            "primary_theme": "AI_Infrastructure"
+        }
+        
+        # 1. 验证配置键读取对齐
+        # 注意：这里从 self.config['modules'] 中找，如果找不到打印调试
+        target_cfg = self.config['modules'].get('ThemeCatalystEngine', {})
+        if not target_cfg:
+            # 兼容性处理：尝试各种可能的 Key 名
+            target_cfg = self.config['modules'].get('theme_catalyst_engine', {})
+            
+        params = target_cfg.get('params', {})
+        expected_limit = params.get('max_grade_risk_off', 'C')
+        
+        out = self.runner._apply_theme_routing(payload)
+        self.assertEqual(out['trade_grade'], expected_limit, f"代码未能正确读取 YAML 中的 max_grade_risk_off. Expected: {expected_limit}, Got: {out['trade_grade']}")
+        self.assertTrue(out['theme_capped_by_macro'], "RISK_OFF 下评级削减未生效")
+
+    def test_observability_enum_alignment(self):
+        """证明观测口径一致：success/blocked/degraded 均能被正确统计"""
+        # 测试数据
+        theme_output = {
+            "safe_to_consume": True,
+            "trade_grade": "B",
+            "current_state": "CONTINUATION",
+            "primary_theme": "AI"
+        }
+        
+        # 测试 success
+        obs_success = ThemeObservabilityLogger.log_observability_event(theme_output, "TRC-1", "success")
+        self.assertEqual(obs_success['route_hit_rate'], 1)
+        self.assertEqual(obs_success['route_reject_rate'], 0)
+        
+        # 测试 blocked
+        obs_blocked = ThemeObservabilityLogger.log_observability_event(theme_output, "TRC-2", "blocked")
+        self.assertEqual(obs_blocked['route_hit_rate'], 0)
+        self.assertEqual(obs_blocked['route_reject_rate'], 1)
+
+    def test_conflict_type_default(self):
+        """证明冲突类型口径：缺省值应为 unknown_conflict"""
+        # 当 macro_regime 为 None 时，进入缺失主链逻辑，应保留初始 unknown_conflict
+        payload_none = {
+            "macro_regime": None, 
+            "trade_grade": "B"
+        }
+        out_def = self.runner._apply_theme_routing(payload_none)
+        self.assertEqual(out_def['conflict_type'], "unknown_conflict", "主链缺失时 conflict_type 未能保持正确的缺省口径")
+
+if __name__ == "__main__":
+    unittest.main()

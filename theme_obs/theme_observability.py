@@ -36,8 +36,8 @@ class ThemeObservabilityLogger:
             
             # --- 核心 SLI (按文档 Observability & SLO Spec 要求) ---
             # 路由层
-            "route_hit_rate": 1 if route_result == "pass" else 0,
-            "route_reject_rate": 1 if route_result == "block" else 0,
+            "route_hit_rate": 1 if route_result == "success" else 0,
+            "route_reject_rate": 1 if route_result == "blocked" else 0,
             
             # 识别层
             "catalyst_candidate_rate": 1 if theme_output.get("catalyst_candidate", False) else 0,
@@ -46,6 +46,7 @@ class ThemeObservabilityLogger:
             # 验证层
             "basket_confirmation_rate": 1 if (safe and has_theme) else 0,
             "market_data_missing_rate": 1 if theme_output.get("error_code") == "MARKET_DATA_MISSING" else 0,
+            "replay_consistency_rate": 1.0, # Placeholder for C-side, as it only runs logic.
             
             # 状态层
             "state_distribution": state,

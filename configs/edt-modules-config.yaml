@@ -690,11 +690,10 @@ canary_source_health:
   ThemeCatalystEngine:
     enabled: true
     params:
-      risk_off:
-        max_grade: "C"
-        final_trade_cap: "INTRADAY"
+      max_grade_risk_off: "C"
+      final_trade_cap_risk_off: "INTRADAY"
       missing_mainchain:
-        action: "WATCH_ONLY"
+        action: "INTRADAY"
       default_contract:
         version: "v1.0"
         producer: "theme_engine"

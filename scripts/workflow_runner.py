@@ -369,16 +369,14 @@ class WorkflowRunner:
             theme_output["theme_capped_by_macro"] = False
             theme_output["final_decision_source"] = "theme_only"
 
-        # 主链缺失时的一致性回退
+        # 主链缺失时的一致性回退 (按规范 L87-L91)
         if macro_regime is None:
             missing_cfg = theme_params.get("missing_mainchain", {})
-            theme_output["conflict_flag"] = True
-            theme_output["conflict_type"] = "none"  # 规范中未定义 C4，收口到 none
             theme_output["final_decision_source"] = "theme_only_degraded"
             theme_output["fallback_reason"] = "MAINCHAIN_MISSING"
             theme_output["safe_to_consume"] = False
             theme_output["theme_capped_by_macro"] = True
-            theme_output["final_trade_cap"] = missing_cfg.get("action", "WATCH_ONLY")
+            theme_output["final_trade_cap"] = missing_cfg.get("action", "INTRADAY")
             
         return theme_output
 

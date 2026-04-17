@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict
@@ -399,6 +400,173 @@ class WorkflowRunner:
             return "short", True
         return "neutral", False
 
+    @staticmethod
+    def _normalize_event_state(raw_state: Any) -> str:
+        state = str(raw_state or "").strip().lower()
+        mapping = {
+            "initial": "Initial",
+            "developing": "Developing",
+            "peak": "Peak",
+            "fading": "Fading",
+            "dead": "Dead",
+            "active": "Developing",
+            "exhaustion": "Peak",
+            "detected": "Initial",
+        }
+        return mapping.get(state, "Initial")
+
+    @staticmethod
+    def _derive_a1_market_validation(payload: Dict[str, Any], ai_factors: Dict[str, Any]) -> str:
+        explicit = str(payload.get("a1_market_validation", "")).strip().lower()
+        if explicit in {"pass", "partial", "fail"}:
+            return explicit
+        a1 = float(ai_factors.get("A1", payload.get("A1", 0)) or 0)
+        if a1 >= 80:
+            return "pass"
+        if a1 >= 60:
+            return "partial"
+        return "fail"
+
+    @staticmethod
+    def _derive_trading_state(event_state: str, a1_validation: str) -> str:
+        if a1_validation == "fail":
+            return "avoid"
+        if event_state == "Initial":
+            return "probe" if a1_validation == "pass" else "observe"
+        if event_state == "Developing":
+            return "tradable" if a1_validation == "pass" else "probe"
+        if event_state in {"Peak", "Fading"}:
+            return "reduce" if a1_validation == "pass" else "avoid"
+        return "avoid"
+
+    @staticmethod
+    def _derive_trade_grade(score: float) -> str:
+        if score >= 80:
+            return "A"
+        if score >= 65:
+            return "B"
+        if score >= 45:
+            return "C"
+        return "D"
+
+    @staticmethod
+    def _derive_decision_and_position(event_state: str, trading_state: str, a1_validation: str) -> tuple[str, str]:
+        if a1_validation == "fail" or event_state == "Dead":
+            return "avoid", "none"
+        if trading_state == "tradable":
+            return "tradable", "medium"
+        if trading_state == "probe":
+            return "intraday_only", "test"
+        if trading_state == "reduce":
+            return "observe_only", "light"
+        return "observe_only", "none"
+
+    @staticmethod
+    def _derive_time_window(payload: Dict[str, Any]) -> str:
+        event_time = payload.get("event_time")
+        if not event_time:
+            return "0-24h"
+        try:
+            ts = str(event_time).replace("Z", "+00:00")
+            start = datetime.fromisoformat(ts)
+            now = datetime.now(timezone.utc)
+            if not start.tzinfo:
+                start = start.replace(tzinfo=timezone.utc)
+            hours = (now - start.astimezone(timezone.utc)).total_seconds() / 3600.0
+        except Exception:
+            return "0-24h"
+        if hours <= 24:
+            return "0-24h"
+        if hours <= 48:
+            return "24-48h"
+        if hours <= 72:
+            return "48-72h"
+        if hours <= 120:
+            return "72-120h"
+        return ">120h"
+
+    @staticmethod
+    def _derive_execution_window(decision: str, trading_state: str, event_state: str) -> str:
+        if decision == "intraday_only":
+            return "intraday"
+        if decision == "avoid":
+            return "next_day_watch"
+        if trading_state == "reduce" or event_state in {"Peak", "Fading"}:
+            return "close_near"
+        return "open"
+
+    def _build_action_card(
+        self,
+        payload: Dict[str, Any],
+        ai_factors: Dict[str, Any],
+        score: float,
+        final_action: str,
+    ) -> Dict[str, Any]:
+        event_state = self._normalize_event_state(payload.get("event_state"))
+        a1_validation = self._derive_a1_market_validation(payload, ai_factors)
+        trading_state = self._derive_trading_state(event_state, a1_validation)
+        decision, position = self._derive_decision_and_position(event_state, trading_state, a1_validation)
+        grade = self._derive_trade_grade(score)
+        if decision == "avoid":
+            grade = "D"
+
+        best_setup = "pullback_confirm"
+        if decision == "avoid":
+            best_setup = "avoid"
+        elif event_state in {"Peak", "Fading"}:
+            best_setup = "no_chase"
+        elif event_state == "Initial":
+            best_setup = "breakout"
+
+        blockers = []
+        if a1_validation == "fail":
+            blockers.append("A1 market validation fail")
+        if event_state == "Dead":
+            blockers.append("Catalyst state is dead")
+        if final_action in {"BLOCK", "FORCE_CLOSE"}:
+            blockers.append(f"execution_gate_{final_action.lower()}")
+
+        catalyst_state = {
+            "Initial": "First Impulse",
+            "Developing": "Continuation",
+            "Peak": "Exhaustion",
+            "Fading": "Exhaustion",
+            "Dead": "Dead",
+        }[event_state]
+        macro_state = str(payload.get("macro_state", "mixed"))
+        if macro_state not in {"risk-on", "mixed", "risk-off"}:
+            macro_state = "risk-off" if a1_validation == "fail" else "mixed"
+
+        return {
+            "event_name": str(payload.get("event_name") or payload.get("headline") or payload.get("event_id", "")),
+            "event_type": str(payload.get("event_type", "unknown")),
+            "event_time": str(payload.get("event_time") or payload.get("timestamp") or ""),
+            "time_window": self._derive_time_window(payload),
+            "evidence_grade": str(payload.get("evidence_grade", "C")),
+            "catalyst_state": catalyst_state,
+            "primary_path": str(payload.get("primary_path", "undetermined")),
+            "secondary_paths": list(payload.get("secondary_paths", [])),
+            "rejected_paths": list(payload.get("rejected_paths", [])),
+            "target_bucket": str(payload.get("target_bucket", "Leader")),
+            "macro_state": macro_state,
+            "sector_confirmation": str(payload.get("sector_confirmation", "weak")),
+            "leader_confirmation": str(payload.get("leader_confirmation", "unconfirmed")),
+            "a1_market_validation": a1_validation,
+            "trading_state": trading_state,
+            "trade_grade": grade,
+            "trade_decision": decision,
+            "best_target": str(payload.get("symbol", payload.get("best_target", "N/A"))),
+            "best_setup": best_setup,
+            "position_tier": position,
+            "execution_window": self._derive_execution_window(decision, trading_state, event_state),
+            "risk_switches": list(payload.get("risk_switches", [])),
+            "invalidators": list(payload.get("invalidators", ["Primary path invalidated"])),
+            "downgrade_rules": list(payload.get("downgrade_rules", ["A1 downgrade"])),
+            "blockers": blockers,
+            "one_line_verdict": f"[{grade}][{decision}] {payload.get('symbol', 'N/A')}",
+            "event_state": event_state,
+        }
+
     def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         request_id = payload.get("request_id")
         trace_id = _stable_trace_id(payload, request_id)
@@ -453,6 +621,7 @@ class WorkflowRunner:
             return result
         result["signal"] = score_out.data
         score = score_out.data["score"]
+        action_card = self._build_action_card(payload, ai_factors, float(score), "PENDING")
 
         liq_in = {
             "vix": payload.get("vix", 18),
@@ -470,6 +639,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = action_card
             return result
         result["liquidity"] = liq_out.data
 
@@ -502,6 +672,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = action_card
             return result
         result["risk"] = gate_out.data
 
@@ -523,6 +694,7 @@ class WorkflowRunner:
                     "request_id": request_id,
                     "batch_id": batch_id,
                 }
+                result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "BLOCK")
                 result["theme_output"] = theme_output
                 self._mark_request_processed(request_id)
                 return result
@@ -544,6 +716,7 @@ class WorkflowRunner:
                     "request_id": request_id,
                     "batch_id": batch_id,
                 }
+                result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
                 result["theme_output"] = theme_output
                 self._mark_request_processed(request_id)
                 return result
@@ -557,6 +730,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = self._build_action_card(payload, ai_factors, float(score), gate_out.data["final_action"])
             self._mark_request_processed(request_id)
             return result
 
@@ -577,6 +751,7 @@ class WorkflowRunner:
                 "required": True,
                 "confirmed": False,
             }
+            result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "PENDING_CONFIRM")
             return result
 
         size_in = {
@@ -595,6 +770,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = action_card
             return result
         result["position"] = size_out.data
 
@@ -606,6 +782,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
             self._mark_request_processed(request_id)
             return result
 
@@ -628,6 +805,7 @@ class WorkflowRunner:
                 "request_id": request_id,
                 "batch_id": batch_id,
             }
+            result["action_card"] = action_card
             return result
         result["exit_plan"] = exit_out.data
 
@@ -667,6 +845,7 @@ class WorkflowRunner:
             "normalized_from_flip": direction_was_normalized,
         }
         result["execution_receipt"] = execution_receipt
+        result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "EXECUTE")
         result["ai_factors"] = {
             "A0": ai_factors["A0"],
             "A-1": ai_factors["A-1"],

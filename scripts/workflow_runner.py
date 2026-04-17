@@ -552,6 +552,30 @@ class WorkflowRunner:
             return "Leader", symbol
         return "Follower", "N/A"
 
+    @staticmethod
+    def _normalize_event_type(raw_type: Any) -> str:
+        allowed = {
+            "tariff",
+            "geo_political",
+            "earnings",
+            "monetary",
+            "energy",
+            "shipping",
+            "industrial",
+            "tech",
+            "healthcare",
+            "regulatory",
+            "merger",
+            "inflation",
+            "commodity",
+            "credit",
+            "natural_disaster",
+            "pandemic",
+            "other",
+        }
+        event_type = str(raw_type or "").strip().lower()
+        return event_type if event_type in allowed else "other"
+
     def _log_replay_task(
         self,
         *,
@@ -630,6 +654,12 @@ class WorkflowRunner:
         grade = self._derive_trade_grade(score)
         if decision == "avoid":
             grade = "D"
+        evidence_grade = str(payload.get("evidence_grade", "C")).strip().upper()
+        if evidence_grade == "C" and decision in {"tradable", "overnight_allowed"}:
+            decision = "observe_only"
+            position = "none"
+            trading_state = "observe"
+            grade = "C"
 
         best_setup = "pullback_confirm"
         if decision == "avoid":
@@ -642,10 +672,29 @@ class WorkflowRunner:
         blockers = []
         if a1_validation == "fail":
             blockers.append("A1 market validation fail")
+        if evidence_grade == "C":
+            blockers.append("Evidence grade C: no tradable/overnight")
         if event_state == "Dead":
             blockers.append("Catalyst state is dead")
         if final_action in {"BLOCK", "FORCE_CLOSE"}:
             blockers.append(f"execution_gate_{final_action.lower()}")
+        elif final_action == "WATCH":
+            blockers.append("execution_gate_watch")
+
+        # Final-action hard convergence to avoid contract conflicts with orchestrator output.
+        if final_action in {"BLOCK", "FORCE_CLOSE"}:
+            trading_state = "avoid"
+            decision = "avoid"
+            position = "none"
+            grade = "D"
+            best_setup = "avoid"
+        elif final_action == "WATCH":
+            if decision in {"tradable", "overnight_allowed", "intraday_only"}:
+                trading_state = "observe"
+                decision = "observe_only"
+                position = "none"
+                if grade == "A" or grade == "B":
+                    grade = "C"
 
         catalyst_state = {
             "Initial": "First Impulse",
@@ -661,10 +710,10 @@ class WorkflowRunner:
 
         return {
             "event_name": str(payload.get("event_name") or payload.get("headline") or payload.get("event_id", "")),
-            "event_type": str(payload.get("event_type", "unknown")),
+            "event_type": self._normalize_event_type(payload.get("event_type", "other")),
             "event_time": str(payload.get("event_time") or payload.get("timestamp") or ""),
             "time_window": self._derive_time_window(payload),
-            "evidence_grade": str(payload.get("evidence_grade", "C")),
+            "evidence_grade": evidence_grade,
             "catalyst_state": catalyst_state,
             "primary_path": str(payload.get("primary_path", "undetermined")),
             "secondary_paths": list(payload.get("secondary_paths", [])),

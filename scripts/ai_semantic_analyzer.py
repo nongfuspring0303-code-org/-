@@ -18,6 +18,26 @@ ZAI_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 
 
 class SemanticAnalyzer:
+    ALLOWED_EVENT_TYPES = {
+        "tariff",
+        "geo_political",
+        "earnings",
+        "monetary",
+        "energy",
+        "shipping",
+        "industrial",
+        "tech",
+        "healthcare",
+        "regulatory",
+        "merger",
+        "inflation",
+        "commodity",
+        "credit",
+        "natural_disaster",
+        "pandemic",
+        "other",
+    }
+
     def __init__(self, config_path: str | None = None):
         self.config = ConfigCenter(config_path=config_path)
         self.model_name = self._model_name() or "glm-4.7-flash"
@@ -125,7 +145,7 @@ class SemanticAnalyzer:
             parsed_latency = latency_ms
 
         output = {
-            "event_type": str(payload.get("event_type", "unknown") or "unknown"),
+            "event_type": self._normalize_event_type(payload.get("event_type", "other")),
             "sentiment": str(payload.get("sentiment", "neutral") or "neutral"),
             "confidence": confidence,
             "recommended_chain": str(payload.get("recommended_chain", "") or ""),
@@ -154,6 +174,11 @@ class SemanticAnalyzer:
             output["risk_flags"] = []
         output["risk_flags"] = [str(x) for x in output["risk_flags"] if str(x).strip()]
         return output
+
+    @classmethod
+    def _normalize_event_type(cls, raw_type: Any) -> str:
+        event_type = str(raw_type or "").strip().lower()
+        return event_type if event_type in cls.ALLOWED_EVENT_TYPES else "other"
 
     @staticmethod
     def _clamp_int(value: Any, low: int, high: int, default: int) -> int:
@@ -268,7 +293,7 @@ class SemanticAnalyzer:
                 "reason": "deterministic keyword match",
             }
         return {
-            "event_type": "unknown",
+            "event_type": "other",
             "sentiment": "neutral",
             "confidence": 50,
             "recommended_chain": "",
@@ -347,7 +372,7 @@ News text:
                 try:
                     parsed = json.loads(content)
                     return {
-                        "event_type": parsed.get("event_type", "unknown"),
+                        "event_type": self._normalize_event_type(parsed.get("event_type", "other")),
                         "sentiment": parsed.get("sentiment", "neutral"),
                         "confidence": parsed.get("confidence", 50),
                         "recommended_chain": parsed.get("recommended_chain", ""),
@@ -362,7 +387,7 @@ News text:
                     }
                 except json.JSONDecodeError:
                     return {
-                        "event_type": "unknown",
+                        "event_type": "other",
                         "sentiment": "neutral",
                         "confidence": 50,
                         "recommended_chain": "",
@@ -371,7 +396,7 @@ News text:
                     }
 
             return {
-                "event_type": "unknown",
+                "event_type": "other",
                 "sentiment": "neutral",
                 "confidence": 50,
                 "recommended_chain": "",
@@ -381,7 +406,7 @@ News text:
 
         except requests.exceptions.Timeout:
             return {
-                "event_type": "unknown",
+                "event_type": "other",
                 "sentiment": "neutral",
                 "confidence": 50,
                 "recommended_chain": "",
@@ -390,7 +415,7 @@ News text:
             }
         except requests.exceptions.RequestException as e:
             return {
-                "event_type": "unknown",
+                "event_type": "other",
                 "sentiment": "neutral",
                 "confidence": 50,
                 "recommended_chain": "",
@@ -399,7 +424,7 @@ News text:
             }
         except Exception as e:
             return {
-                "event_type": "unknown",
+                "event_type": "other",
                 "sentiment": "neutral",
                 "confidence": 50,
                 "recommended_chain": "",
@@ -514,7 +539,7 @@ News text:
         semantic = semantic_output if isinstance(semantic_output, dict) else {}
         confidence = self._clamp_int(semantic.get("confidence", 0), 0, 100, 0)
         sentiment = str(semantic.get("sentiment", "neutral"))
-        event_type = str(semantic.get("event_type", "unknown"))
+        event_type = self._normalize_event_type(semantic.get("event_type", "other"))
         state = self._normalize_event_state(
             semantic.get("event_state") or semantic.get("narrative_stage"),
             f"{headline} {raw_text}",

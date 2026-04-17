@@ -74,6 +74,7 @@ def test_workflow_runner_addable_requires_three_gate_resonance():
             "event_type": "tech",
             "event_time": "2026-04-17T10:00:00Z",
             "event_name": "AI capex acceleration",
+            "evidence_grade": "A",
         },
         {"A1": 85},
         82.0,
@@ -100,6 +101,7 @@ def test_workflow_runner_target_bucket_priority_is_leader_then_etf_then_sector()
             "event_type": "energy",
             "event_time": "2026-04-17T10:00:00Z",
             "event_name": "Oil shock",
+            "evidence_grade": "A",
         },
         {"A1": 75},
         71.0,
@@ -107,3 +109,52 @@ def test_workflow_runner_target_bucket_priority_is_leader_then_etf_then_sector()
     )
     assert card["target_bucket"] == "ETF"
     assert card["best_target"] == "XLE"
+
+
+def test_workflow_runner_final_action_and_action_card_must_converge():
+    runner = WorkflowRunner()
+    card = runner._build_action_card(  # pylint: disable=protected-access
+        {
+            "event_state": "Developing",
+            "a1_market_validation": "pass",
+            "macro_confirmation": "supportive",
+            "sector_confirmation": "strong",
+            "leader_confirmation": "confirmed",
+            "target_leader": ["NVDA"],
+            "event_type": "tech",
+            "event_time": "2026-04-17T10:00:00Z",
+            "event_name": "AI capex acceleration",
+            "evidence_grade": "A",
+        },
+        {"A1": 88},
+        86.0,
+        "BLOCK",
+    )
+    assert card["trading_state"] == "avoid"
+    assert card["trade_decision"] == "avoid"
+    assert card["position_tier"] == "none"
+    assert card["trade_grade"] == "D"
+
+
+def test_workflow_runner_evidence_grade_c_hard_gate():
+    runner = WorkflowRunner()
+    card = runner._build_action_card(  # pylint: disable=protected-access
+        {
+            "event_state": "Developing",
+            "a1_market_validation": "pass",
+            "macro_confirmation": "supportive",
+            "sector_confirmation": "strong",
+            "leader_confirmation": "confirmed",
+            "target_leader": ["NVDA"],
+            "event_type": "tech",
+            "event_time": "2026-04-17T10:00:00Z",
+            "event_name": "AI capex acceleration",
+            "evidence_grade": "C",
+        },
+        {"A1": 88},
+        86.0,
+        "EXECUTE",
+    )
+    assert card["trade_decision"] == "observe_only"
+    assert card["position_tier"] == "none"
+    assert "Evidence grade C: no tradable/overnight" in card["blockers"]

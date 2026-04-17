@@ -285,3 +285,26 @@ def test_semantic_analyzer_hit_when_transmission_candidates_present(tmp_path, mo
     assert out["verdict"] == "hit"
     assert out["event_state"] in {"Initial", "Developing", "Peak", "Fading", "Dead"}
     assert out["transmission_candidates"] == ["import_cost", "export_margin"]
+
+
+def test_semantic_analyzer_normalizes_unknown_event_type_to_other(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        "modules: {}\nruntime:\n  semantic:\n    enabled: true\n    min_confidence: 10\n",
+        encoding="utf-8",
+    )
+    analyzer = SemanticAnalyzer(config_path=str(cfg))
+
+    def _invalid_event_type(*_args, **_kwargs):
+        return {
+            "event_type": "completely_invalid_type",
+            "sentiment": "neutral",
+            "confidence": 90,
+            "recommended_chain": "any_chain",
+            "provider": "mock_provider",
+            "latency_ms": 8,
+        }
+
+    monkeypatch.setattr(analyzer, "_call_provider", _invalid_event_type)
+    out = analyzer.analyze("headline", "raw")
+    assert out["event_type"] == "other"

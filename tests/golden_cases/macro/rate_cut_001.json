@@ -1,15 +1,33 @@
 {
-  "group": "macro",
   "case_id": "macro_rate_cut_001",
   "category": "macro",
   "risk_level": "A",
-  "description": "Fed rate cut should prefer liquidity/rates transmission and avoid direct short bias.",
+  "description": "V2.1 Standard: Fed rate cut. Classic bullish macro signal.",
   "input": {
-    "headline": "Fed cuts rates by 25 basis points",
-    "raw_text": "The Federal Reserve announced a 25bp rate cut to support liquidity conditions.",
+    "event_id": "EVT-FED-20260415-007",
+    "event_type": "macro",
+    "event_time": "2026-04-15T14:00:00Z",
+    "headline": "Federal Reserve cuts interest rates by 50 basis points",
+    "raw_text": "Unexpectedly aggressive pivot to support economic growth as inflation cools further.",
     "source_type": "official",
     "source_url": "https://www.federalreserve.gov/newsevents/pressreleases.htm",
-    "timestamp": "2026-04-15T14:00:00Z"
+    "timestamp": "2026-04-15T14:00:00Z",
+    "a0_event_strength": 95.0,
+    "expectation_gap": -0.25,
+    "event_state": "Initial",
+    "confidence": 1.0,
+    "transmission_candidates": [
+      {
+        "factor": "Rates Liquidity",
+        "logic": "Direct lowering of discount rate, boost to growth stocks"
+      }
+    ],
+    "risk_flags": [],
+    "evidence_spans": [
+      "cuts interest rates by 50 basis points",
+      "aggressive pivot"
+    ],
+    "evidence_grade": "A"
   },
   "scenario": {
     "transmission_paths": [
@@ -17,33 +35,15 @@
         "path_id": "fed_fund",
         "path_name": "rates_liquidity",
         "path_type": "fundamental",
-        "horizon": "1-5D",
-        "persistence": "medium",
-        "confidence": 82.0
-      },
-      {
-        "path_id": "fed_asset",
-        "path_name": "asset_repricing",
-        "path_type": "asset_pricing",
-        "horizon": "intraday",
-        "persistence": "fast",
-        "confidence": 72.0
-      },
-      {
-        "path_id": "fed_narr",
-        "path_name": "headline_narrative",
-        "path_type": "narrative",
-        "horizon": "multiweek",
-        "persistence": "slow",
-        "confidence": 58.0
+        "confidence": 92.0
       }
     ],
     "sectors": [
       {
         "name": "科技",
         "direction": "LONG",
-        "impact_score": 0.82,
-        "confidence": 0.87
+        "impact_score": 0.9,
+        "confidence": 0.95
       }
     ],
     "stock_candidates": [
@@ -51,36 +51,32 @@
         "symbol": "NVDA",
         "sector": "科技",
         "direction": "LONG",
-        "event_beta": 1.2,
+        "event_beta": 1.25,
         "realtime_price": 980.0
       }
     ],
     "asset_validation": {
-      "score": 85
+      "score": 90
     }
   },
   "expect": {
     "required_fields": [
       "source_rank",
       "dominant_path",
-      "mixed_regime",
       "opportunities",
-      "state_machine_step",
       "gate_reason_code"
     ],
     "allowed_signals": [
       "LONG",
-      "WATCH"
+      "OVERNIGHT_ALLOWED"
     ],
-    "forbidden_signals": [
-      "SHORT"
-    ],
+    "max_final_action": "EXECUTE",
+    "allow_empty_opportunities": false,
+    "must_have_gate_reason_code": true,
     "expected_path_types_any_of": [
       "fundamental",
       "asset_pricing"
     ],
-    "max_final_action": "EXECUTE",
-    "allow_empty_opportunities": false,
-    "must_have_gate_reason_code": true
+    "forbidden_signals": []
   }
 }

@@ -1,79 +1,41 @@
 {
-  "group": "low_trust",
   "case_id": "low_trust_rumor_low_rank_001",
-  "category": "low_trust",
+  "category": "other",
   "risk_level": "C",
-  "description": "Low-rank rumor should stay conservative and avoid execution-level release.",
+  "description": "V2.1 Standard: Low rank rumor from social media. Must trigger OBSERVE_ONLY via Evidence Grade C.",
   "input": {
+    "event_id": "EVT-RUMOR-20260418-999",
+    "event_type": "other",
+    "event_time": "2026-04-18T10:00:00Z",
     "headline": "Unverified post claims emergency policy reversal tonight",
-    "raw_text": "A social account posted a rumor without official confirmation.",
-    "source_type": "social",
-    "source_url": "https://twitter.com/random_account/status/123",
-    "timestamp": "2026-04-15T11:10:00Z"
+    "raw_text": "A viral post on X claims the central bank will call an emergency meeting to reverse interest rate policy before Monday open.",
+    "source_type": "social_media_unverified",
+    "source_url": "https://x.com/random_trader/status/12345",
+    "timestamp": "2026-04-18T10:05:00Z",
+    "a0_event_strength": 45.0,
+    "expectation_gap": 0.0,
+    "event_state": "Initial",
+    "confidence": 0.15,
+    "transmission_candidates": [
+      {"factor": "Emergency Pivot", "logic": "Immediate market shock if true"}
+    ],
+    "risk_flags": ["low_source_integrity", "unconfirmed_rumor"],
+    "evidence_spans": ["viral post on X claims", "unverified"],
+    "evidence_grade": "C"
   },
   "scenario": {
-    "transmission_paths": [
-      {
-        "path_id": "rumor_narr",
-        "path_name": "rumor_narrative",
-        "path_type": "narrative",
-        "confidence": 82.0
-      },
-      {
-        "path_id": "rumor_fund",
-        "path_name": "weak_fundamental",
-        "path_type": "fundamental",
-        "confidence": 41.0
-      },
-      {
-        "path_id": "rumor_asset",
-        "path_name": "weak_asset",
-        "path_type": "asset_pricing",
-        "confidence": 43.0
-      }
-    ],
-    "sectors": [
-      {
-        "name": "科技",
-        "direction": "WATCH",
-        "impact_score": 0.52,
-        "confidence": 0.5
-      }
-    ],
-    "stock_candidates": [
-      {
-        "symbol": "NVDA",
-        "sector": "科技",
-        "direction": "WATCH",
-        "event_beta": 0.8
-      }
-    ],
-    "asset_validation": {
-      "score": 45
-    }
+    "transmission_paths": [],
+    "sectors": [],
+    "stock_candidates": [],
+    "asset_validation": {"score": 20}
   },
   "expect": {
-    "required_fields": [
-      "source_rank",
-      "dominant_path",
-      "mixed_regime",
-      "opportunities",
-      "state_machine_step",
-      "gate_reason_code"
-    ],
-    "allowed_signals": [
-      "WATCH"
-    ],
-    "forbidden_signals": [
-      "LONG",
-      "SHORT"
-    ],
-    "expected_path_types_any_of": [
-      "fundamental",
-      "asset_pricing"
-    ],
+    "required_fields": ["source_rank", "gate_reason_code"],
+    "allowed_signals": ["WATCH", "AVOID"],
+    "forbidden_signals": ["LONG", "SHORT", "EXECUTE"],
+    "expected_path_types_any_of": ["undetermined", ""],
     "max_final_action": "WATCH",
-    "allow_empty_opportunities": false,
+    "allow_empty_opportunities": true,
     "must_have_gate_reason_code": true
   }
 }

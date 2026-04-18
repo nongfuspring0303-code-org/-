@@ -80,16 +80,54 @@ class SemanticAnalyzer:
         model = self._semantic_cfg().get("model", "")
         return str(model or "")
 
+    def _get_oauth_token(self) -> str:
+        now = time.time()
+        if self._oauth_cache.get("token") and now < self._oauth_cache.get("expires_at", 0):
+            return str(self._oauth_cache["token"])
+        
+        cfg = self._semantic_cfg()
+        url = cfg.get("oauth_url", "")
+        client_id = os.getenv(cfg.get("oauth_client_id_env", "OAUTH_CLIENT_ID"), "")
+        client_secret = os.getenv(cfg.get("oauth_client_secret_env", "OAUTH_CLIENT_SECRET"), "")
+        
+        try:
+            resp = requests.post(url, data={"grant_type": "client_credentials"}, auth=(client_id, client_secret), timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            token = data["access_token"]
+            expires_in = data.get("expires_in", 3600)
+            self._oauth_cache = {"token": token, "expires_at": now + expires_in - 60}
+            return str(token)
+        except Exception:
+            return ""
+
     def _api_key(self) -> str:
         # Priority: env > .env.local > (none)
-        env_name = str(self._semantic_cfg().get("api_key_env") or "ZAI_API_KEY")
-
-        # 1. Environment variable
-        value = os.getenv(env_name, "").strip()
-        if value:
-            return value
+        # OAuth Support: If provider is OAuth-based, this returns the Client Secret or specific key
+        provider = self._provider_name().lower()
         
-        # 2. .env.local file (项目根目录，不提交git)
+        if self._semantic_cfg().get("auth_method") == "oauth":
+            return self._get_oauth_token()
+
+        env_names = []
+        if "openai" in provider:
+            env_names = ["OPENAI_API_KEY"]
+        
+        cfg_env = str(self._semantic_cfg().get("api_key_env") or "")
+        if cfg_env:
+            env_names.insert(0, cfg_env)
+        
+        # Default back to ZAI if nothing else specified
+        if not env_names:
+            env_names = ["ZAI_API_KEY"]
+
+        # 1. Environment variables
+        for env_name in env_names:
+            value = os.getenv(env_name, "").strip()
+            if value:
+                return value
+        
+        # 2. .env.local file
         project_root = Path(__file__).parent.parent
         env_local = project_root / ".env.local"
         if env_local.exists():
@@ -98,7 +136,8 @@ class SemanticAnalyzer:
                     line = line.strip()
                     if line and not line.startswith("#") and "=" in line:
                         key, val = line.split("=", 1)
-                        if key.strip() == env_name:
+                        resolved_key = key.strip()
+                        if resolved_key in env_names:
                             return val.strip().strip('"')
         
         return ""
@@ -270,7 +309,11 @@ class SemanticAnalyzer:
     ) -> Dict[str, Any]:
         text = f"{headline} {raw_text}"
 
-        if provider in ("glm_4", "glm-4.7-flash", "glm-4.7", "glm-4-flash", "gemini_flash_lite") or "glm" in model.lower():
+        provider_lower = provider.lower()
+        if "openai" in provider_lower or "gpt" in model.lower():
+            return self._call_openai_api(text, timeout_ms, model=model)
+
+        if provider_lower in ("glm_4", "glm-4.7-flash", "glm-4.7", "glm-4-flash", "gemini_flash_lite") or "glm" in model.lower():
             return self._call_glm_api(text, timeout_ms, model=model)
 
         text_lower = text.lower()
@@ -292,42 +335,133 @@ class SemanticAnalyzer:
                 "recommended_stocks": [],
                 "reason": "deterministic keyword match",
             }
-        return {
-            "event_type": "other",
-            "sentiment": "neutral",
-            "confidence": 50,
-            "recommended_chain": "",
-            "recommended_stocks": [],
-            "reason": "deterministic fallback",
-        }
+    def _get_oauth_token(self) -> str:
+        """Handles OAuth 2.0 token exchange and caching."""
+        # Simple file-based cache to avoid redundant hits
+        cache_path = Path(__file__).parent.parent / "logs" / ".oauth_cache.json"
+        
+        if cache_path.exists():
+            try:
+                cache = json.loads(cache_path.read_text())
+                if cache.get("expiry", 0) > time.time() + 60: # 1 min buffer
+                    return cache.get("access_token", "")
+            except:
+                pass
 
-    def _call_glm_api(self, text: str, timeout_ms: int, *, model: str = "") -> Dict[str, Any]:
-        prompt = f"""You are an Event Object extractor for an event-driven trading system.
+        # Exchange Client ID/Secret for Token
+        client_id = os.getenv("EDT_AUTH_CLIENT_ID", "")
+        client_secret = os.getenv("EDT_AUTH_CLIENT_SECRET", "")
+        token_url = str(self._semantic_cfg().get("oauth_token_url", ""))
+
+        if not (client_id and client_secret and token_url):
+            return ""
+
+        try:
+            resp = requests.post(
+                token_url,
+                data={"grant_type": "client_credentials"},
+                auth=(client_id, client_secret),
+                timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            token = data["access_token"]
+            expiry = time.time() + data.get("expires_in", 3600)
+            
+            # Save to cache
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps({"access_token": token, "expiry": expiry}))
+            
+            return token
+        except Exception as e:
+            print(f"OAuth Failed: {e}")
+            return ""
+
+    def _call_openai_api(self, text: str, timeout_ms: int, *, model: str = "") -> Dict[str, Any]:
+        prompt = self._get_prompt(text)
+        api_key = self._api_key()
+        if not api_key:
+            return self._abstain_response(fallback_reason="api_key_missing_openai", provider="openai")
+
+        endpoint = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
+        use_model = model or "gpt-4o-mini" # Fast & cheap default
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": use_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 300,
+                "response_format": {"type": "json_object"} if "gpt-4" in use_model or "gpt-3.5-turbo-0125" in use_model else None
+            }
+            timeout_seconds = max(5.0, timeout_ms / 1000.0)
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout_seconds)
+            response.raise_for_status()
+            result = response.json()
+
+            if "choices" in result and len(result["choices"]) > 0:
+                content = result["choices"][0]["message"]["content"].strip()
+                return self._parse_ai_content(content)
+            
+            return self._abstain_response(fallback_reason="openai_no_choices", provider="openai")
+        except Exception as e:
+            return self._abstain_response(fallback_reason=f"openai_error: {str(e)[:50]}", provider="openai")
+
+    def _get_prompt(self, text: str) -> str:
+        return f"""You are an Event Object extractor for an event-driven trading system.
 
 STRICT OUTPUT CONTRACT:
 - Return ONE JSON object only. No markdown, no prose.
-- DO NOT output trade decision, path decision, or final routing.
-- You may only output transmission_candidates (<=3) as candidate factors.
-
-Required fields:
-- event_type: one of [tariff, geo_political, earnings, monetary, energy, shipping, industrial, tech, healthcare, regulatory, merger, inflation, commodity, credit, natural_disaster, pandemic, other]
-- sentiment: one of [positive, negative, neutral]
-- confidence: integer 0..100
-- a0_event_strength: integer 0..100
-- expectation_gap: integer -100..100
-- event_state: one of [Initial, Developing, Peak, Fading, Dead]
-- transmission_candidates: array of short strings, 0..3 items, candidate-only (NOT final path)
-- evidence_spans: array of short source snippets, 1..3 items
-- risk_flags: array of strings (can be empty)
-- reason: short sentence
-
-Forbidden fields:
-- primary_path, dominant_path, trade_decision, position_tier, action_card, route_decision, final_path
+- Required fields:
+  - event_type: one of [tariff, geo_political, earnings, monetary, energy, shipping, industrial, tech, healthcare, regulatory, merger, inflation, commodity, credit, natural_disaster, pandemic, other]
+  - sentiment: one of [positive, negative, neutral]
+  - confidence: integer 0..100
+  - a0_event_strength: integer 0..100
+  - expectation_gap: integer -100..100
+  - event_state: one of [Initial, Developing, Peak, Fading, Dead]
+  - transmission_candidates: array of short strings, 0..3 items
+  - evidence_spans: array of short source snippets, 1..3 items
+  - risk_flags: array of strings
+  - reason: short sentence
 
 News text:
 {text}
 """
 
+    def _parse_ai_content(self, content: str) -> Dict[str, Any]:
+        clean_content = content.strip()
+        if clean_content.startswith("```json"):
+            clean_content = clean_content[7:]
+        if clean_content.endswith("```"):
+            clean_content = clean_content[:-3]
+        if clean_content.startswith("```"):
+            clean_content = clean_content[3:]
+        
+        try:
+            parsed = json.loads(clean_content.strip())
+            return {
+                "event_type": self._normalize_event_type(parsed.get("event_type", "other")),
+                "sentiment": parsed.get("sentiment", "neutral"),
+                "confidence": parsed.get("confidence", 50),
+                "recommended_chain": parsed.get("recommended_chain", ""),
+                "recommended_stocks": parsed.get("recommended_stocks", []),
+                "a0_event_strength": parsed.get("a0_event_strength", parsed.get("confidence", 50)),
+                "expectation_gap": parsed.get("expectation_gap", 0),
+                "event_state": parsed.get("event_state", "Initial"),
+                "transmission_candidates": parsed.get("transmission_candidates", []),
+                "evidence_spans": parsed.get("evidence_spans", []),
+                "risk_flags": parsed.get("risk_flags", []),
+                "reason": parsed.get("reason", "success"),
+            }
+        except:
+             return self._abstain_response(fallback_reason="json_parse_failed", provider="ai")
+
+    def _call_glm_api(self, text: str, timeout_ms: int, *, model: str = "") -> Dict[str, Any]:
+        prompt = self._get_prompt(text)
         api_key = self._api_key()
         if not api_key:
             return self._abstain_response(

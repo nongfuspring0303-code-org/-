@@ -271,6 +271,11 @@ class SemanticAnalyzer:
             "expectation_gap": 0,
             "event_state": "Initial",
             "transmission_candidates": [],
+            "transmission_path": [],
+            "entities": [],
+            "narrative_vs_fact": "mixed",
+            "event_scope": "Sector",
+            "novelty_score": 0.0,
             "evidence_spans": [],
             "risk_flags": [fallback_reason] if fallback_reason else [],
         }
@@ -304,12 +309,21 @@ class SemanticAnalyzer:
             "expectation_gap": self._clamp_int(payload.get("expectation_gap", 0), -100, 100, 0),
             "event_state": self._normalize_event_state(payload.get("event_state") or payload.get("narrative_stage"), ""),
             "transmission_candidates": payload.get("transmission_candidates", []),
+            "transmission_path": payload.get("transmission_path", []),
+            "entities": payload.get("entities", []),
+            "narrative_vs_fact": self._normalize_narrative_vs_fact(payload.get("narrative_vs_fact")),
+            "event_scope": self._normalize_event_scope(payload.get("event_scope")),
+            "novelty_score": self._normalize_novelty_score(payload.get("novelty_score", 0.0)),
             "evidence_spans": payload.get("evidence_spans", []),
             "risk_flags": payload.get("risk_flags", []),
         }
         if not isinstance(output["transmission_candidates"], list):
             output["transmission_candidates"] = []
         output["transmission_candidates"] = [str(x) for x in output["transmission_candidates"] if str(x).strip()][:3]
+        if not isinstance(output["transmission_path"], list):
+            output["transmission_path"] = []
+        output["transmission_path"] = [str(x) for x in output["transmission_path"] if str(x).strip()][:5]
+        output["entities"] = self._normalize_entities(output["entities"])
         if not isinstance(output["evidence_spans"], list):
             output["evidence_spans"] = []
         output["evidence_spans"] = [str(x) for x in output["evidence_spans"] if str(x).strip()][:3]
@@ -322,6 +336,54 @@ class SemanticAnalyzer:
     def _normalize_event_type(cls, raw_type: Any) -> str:
         event_type = str(raw_type or "").strip().lower()
         return event_type if event_type in cls.ALLOWED_EVENT_TYPES else "other"
+
+    @staticmethod
+    def _normalize_narrative_vs_fact(raw: Any) -> str:
+        value = str(raw or "").strip().lower()
+        if value in {"narrative", "fact", "mixed"}:
+            return value
+        return "mixed"
+
+    @staticmethod
+    def _normalize_event_scope(raw: Any) -> str:
+        value = str(raw or "").strip().lower()
+        mapping = {
+            "macro": "Macro",
+            "sector": "Sector",
+            "theme": "Theme",
+            "sector_theme": "Theme",
+        }
+        return mapping.get(value, "Sector")
+
+    @staticmethod
+    def _normalize_novelty_score(raw: Any) -> float:
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+        # Accept both 0..1 and 0..100 user inputs.
+        if val > 1.0:
+            val = val / 100.0
+        return max(0.0, min(1.0, val))
+
+    @staticmethod
+    def _normalize_entities(raw: Any) -> List[Dict[str, str]]:
+        if not isinstance(raw, list):
+            return []
+        out: List[Dict[str, str]] = []
+        for item in raw:
+            if isinstance(item, dict):
+                typ = str(item.get("type", "generic") or "generic").strip().lower()
+                val = str(item.get("value", "") or "").strip()
+                if val:
+                    out.append({"type": typ, "value": val})
+            else:
+                val = str(item or "").strip()
+                if val:
+                    out.append({"type": "generic", "value": val})
+            if len(out) >= 12:
+                break
+        return out
 
     @staticmethod
     def _clamp_int(value: Any, low: int, high: int, default: int) -> int:
@@ -661,6 +723,11 @@ STRICT OUTPUT CONTRACT:
   - a0_event_strength: integer 0..100
   - expectation_gap: integer -100..100
   - event_state: one of [Initial, Developing, Peak, Fading, Dead]
+  - narrative_vs_fact: one of [narrative, fact, mixed]
+  - event_scope: one of [Macro, Sector, Theme]
+  - novelty_score: float between 0 and 1
+  - entities: array of objects [{{"type":"...", "value":"..."}}], 0..12 items
+  - transmission_path: array of causal steps, 1..5 items
   - transmission_candidates: array of short strings, 0..3 items
   - evidence_spans: array of short source snippets, 1..3 items
   - risk_flags: array of strings
@@ -690,6 +757,11 @@ News text:
                 "a0_event_strength": parsed.get("a0_event_strength", parsed.get("confidence", 50)),
                 "expectation_gap": parsed.get("expectation_gap", 0),
                 "event_state": parsed.get("event_state", "Initial"),
+                "narrative_vs_fact": parsed.get("narrative_vs_fact", "mixed"),
+                "event_scope": parsed.get("event_scope", "Sector"),
+                "novelty_score": parsed.get("novelty_score", 0.0),
+                "entities": parsed.get("entities", []),
+                "transmission_path": parsed.get("transmission_path", []),
                 "transmission_candidates": parsed.get("transmission_candidates", []),
                 "evidence_spans": parsed.get("evidence_spans", []),
                 "risk_flags": parsed.get("risk_flags", []),
@@ -752,6 +824,11 @@ News text:
                         "a0_event_strength": parsed.get("a0_event_strength", parsed.get("confidence", 50)),
                         "expectation_gap": parsed.get("expectation_gap", 0),
                         "event_state": parsed.get("event_state", parsed.get("narrative_stage", "Initial")),
+                        "narrative_vs_fact": parsed.get("narrative_vs_fact", "mixed"),
+                        "event_scope": parsed.get("event_scope", "Sector"),
+                        "novelty_score": parsed.get("novelty_score", 0.0),
+                        "entities": parsed.get("entities", []),
+                        "transmission_path": parsed.get("transmission_path", []),
                         "transmission_candidates": parsed.get("transmission_candidates", []),
                         "evidence_spans": parsed.get("evidence_spans", []),
                         "risk_flags": parsed.get("risk_flags", []),
@@ -922,6 +999,11 @@ News text:
         if not isinstance(semantic_candidates, list):
             semantic_candidates = []
         normalized_candidates = [str(x) for x in semantic_candidates if str(x).strip()][:3]
+        normalized_entities = self._normalize_entities(semantic.get("entities", []))
+        transmission_path = semantic.get("transmission_path", [])
+        if not isinstance(transmission_path, list):
+            transmission_path = []
+        normalized_path = [str(x) for x in transmission_path if str(x).strip()][:5]
 
         generated_event_time = event_time
         if not generated_event_time:
@@ -948,6 +1030,11 @@ News text:
             "a0_event_strength": self._event_strength(confidence, verdict),
             "expectation_gap": self._expectation_gap(sentiment, confidence, headline),
             "event_state": state,
+            "narrative_vs_fact": self._normalize_narrative_vs_fact(semantic.get("narrative_vs_fact")),
+            "event_scope": self._normalize_event_scope(semantic.get("event_scope")),
+            "novelty_score": self._normalize_novelty_score(semantic.get("novelty_score", 0.0)),
+            "entities": normalized_entities,
+            "transmission_path": normalized_path,
             "transmission_candidates": normalized_candidates or self._transmission_candidates(event_type, sentiment)[:3],
             "evidence_grade": evidence_grade,
             "evidence_spans": self._evidence_spans(headline, raw_text),

@@ -548,12 +548,21 @@ class ConductionMapper(EDTModule):
             mapping = self._policy_mapping(policy_intervention, sector_data)
         else:
             fallback_cfg = self.config_center.get_registered("gate_policy", {}).get("conduction_mapper", {})
+            fallback_sectors = []
+            is_hit = semantic_out.get("ai_verdict") == "hit" or semantic_out.get("verdict") == "hit"
+            if is_hit:
+                fallback_sectors = [{
+                    "sector": "Tech / Macro Innovation",
+                    "direction": "benefit" if semantic_out.get("sentiment") == "positive" else "hurt",
+                    "impact_score": round(float(semantic_out.get("confidence", 50)) / 100.0, 2),
+                    "reason": "AI Semantic Intelligence Fallback"
+                }]
             mapping = {
                 "macro_factors": [],
                 "asset_impacts": [],
-                "sector_impacts": [],
+                "sector_impacts": fallback_sectors,
                 "stock_candidates": [],
-                "conduction_path": ["事件信息不足，需人工补充传导路径"],
+                "conduction_path": ["事件信息无法精确分类，已通过 AI 语义自动映射"],
                 "confidence": float(fallback_cfg.get("fallback_confidence", 35)),
             }
 
@@ -569,8 +578,10 @@ class ConductionMapper(EDTModule):
         )
 
         if not mapping["macro_factors"] or not mapping["sector_impacts"]:
-            mapping["stock_candidates"] = []
-            needs_manual_review = True
+            if not mapping.get("stock_candidates"):
+                needs_manual_review = True
+            else:
+                needs_manual_review = True # Keep AI candidates, just flag for audit
         else:
             needs_manual_review = False
 

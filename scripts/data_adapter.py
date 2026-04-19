@@ -155,7 +155,25 @@ class DataAdapter:
         except Exception:
             return self.write_health_summary()
 
-    def fetch_news(self) -> Dict[str, Any]:
+    def _normalize_news_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "headline": item.get("headline", ""),
+            "source": item.get("source_url", ""),
+            "source_url": item.get("source_url", ""),
+            "source_type": item.get("source_type", ""),
+            "source_mode": item.get("source_mode", ""),
+            "timestamp": item.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            "raw_text": item.get("raw_text", ""),
+            "event_id": item.get("event_id", ""),
+            "metadata": {
+                "keywords": [],
+                "region": "US",
+                "asset_class": ["equities", "bonds", "usd"],
+                "trace_id": item.get("trace_id"),
+            },
+        }
+
+    def fetch_news_batch(self, max_items: int = 10) -> List[Dict[str, Any]]:
         try:
             from ai_event_intel import NewsIngestion
         except ImportError as exc:
@@ -168,26 +186,14 @@ class DataAdapter:
             if not config_path:
                 config_path = str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
             # 使用当前配置文件的超时设置
-            out = NewsIngestion(config_path).run({"max_items": 1})
+            out = NewsIngestion(config_path).run({"max_items": max(1, int(max_items))})
             if out.data.get("items"):
-                item = out.data["items"][0]
-                return {
-                    "headline": item.get("headline", ""),
-                    "source": item.get("source_url", ""),
-                    "source_url": item.get("source_url", ""),
-                    "source_type": item.get("source_type", ""),
-                    "source_mode": item.get("source_mode", ""),
-                    "timestamp": item.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                    "raw_text": item.get("raw_text", ""),
-                    "metadata": {
-                        "keywords": [],
-                        "region": "US",
-                        "asset_class": ["equities", "bonds", "usd"],
-                        "trace_id": item.get("trace_id"),
-                    },
-                }
+                normalized: List[Dict[str, Any]] = []
+                for item in out.data["items"]:
+                    normalized.append(self._normalize_news_item(item))
+                return normalized
 
-        return {
+        return [{
             "headline": "Federal Reserve announces emergency rate cut of 50bps",
             "source": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
             "source_url": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
@@ -195,6 +201,7 @@ class DataAdapter:
             "source_mode": "pull",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "raw_text": "The Federal Reserve has announced an emergency rate cut...",
+            "event_id": "FALLBACK-NEWS-0001",
             "metadata": {
                 "keywords": ["Fed", "emergency", "rate cut"],
                 "region": "US",
@@ -203,7 +210,11 @@ class DataAdapter:
                 "is_test_data": True,  # 标记为测试数据
                 "test_data_note": "当无法获取真实新闻时使用的fallback测试数据",
             }
-        }
+        }]
+
+    def fetch_news(self) -> Dict[str, Any]:
+        batch = self.fetch_news_batch(max_items=1)
+        return batch[0] if batch else {}
 
     def _fetch_vix(self) -> Optional[Dict[str, Any]]:
         timeout = self._get_int_config("data_adapter.market_data.timeout_seconds", 5)

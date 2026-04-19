@@ -55,6 +55,9 @@ class RealtimeNewsMonitor:
         self.node_role = self._load_node_role()
         self.master_api = self._load_master_api()
         self.last_news_signature = ""  # 用于检测新新闻
+        self._seen_signatures: Dict[str, float] = {}
+        self._seen_ttl_seconds = 6 * 3600
+        self.batch_news_limit = 20
         self.translator = Translator() if Translator else None
         if not self.translator:
             logger.warning("⚠️ googletrans 不可用，中文翻译将跳过")
@@ -124,6 +127,9 @@ class RealtimeNewsMonitor:
             return []
 
         try:
+            if hasattr(self.data_adapter, "fetch_news_batch"):
+                result = self.data_adapter.fetch_news_batch(max_items=self.batch_news_limit)
+                return result if isinstance(result, list) else []
             result = self.data_adapter.fetch_news()
             return [result] if result else []
         except Exception as e:
@@ -522,16 +528,35 @@ class RealtimeNewsMonitor:
         if not news_list:
             logger.warning("📭 新闻摄取为空，已跳过下游触发")
             return False
-        
-        latest_news = news_list[0]
-        signature = self._get_news_signature(latest_news)
-        
-        if signature == self.last_news_signature:
+
+        now = time.time()
+        # 清理过期签名，避免集合无限增长。
+        stale = [sig for sig, ts in self._seen_signatures.items() if now - ts > self._seen_ttl_seconds]
+        for sig in stale:
+            self._seen_signatures.pop(sig, None)
+
+        # NewsIngestion 默认按时间倒序，处理时改为正序，避免旧消息被新消息长期压住。
+        ordered = list(reversed(news_list))
+        fresh: List[Dict[str, Any]] = []
+        for item in ordered:
+            sig = self._get_news_signature(item)
+            if not sig:
+                continue
+            if sig in self._seen_signatures:
+                continue
+            self._seen_signatures[sig] = now
+            fresh.append(item)
+
+        if not fresh:
             logger.debug("📭 无新新闻")
             return False
-        
-        self.last_news_signature = signature
-        return self._process_news(latest_news)
+
+        triggered_any = False
+        for item in fresh:
+            self.last_news_signature = self._get_news_signature(item)
+            if self._process_news(item):
+                triggered_any = True
+        return triggered_any
     
     def run_loop(self, max_iterations: Optional[int] = None):
         """持续运行"""

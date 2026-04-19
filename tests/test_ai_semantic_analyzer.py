@@ -308,3 +308,39 @@ def test_semantic_analyzer_normalizes_unknown_event_type_to_other(tmp_path, monk
     monkeypatch.setattr(analyzer, "_call_provider", _invalid_event_type)
     out = analyzer.analyze("headline", "raw")
     assert out["event_type"] == "other"
+
+
+def test_semantic_analyzer_v21_fields_present_and_normalized(tmp_path, monkeypatch):
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        "modules: {}\nruntime:\n  semantic:\n    enabled: true\n    min_confidence: 10\n",
+        encoding="utf-8",
+    )
+    analyzer = SemanticAnalyzer(config_path=str(cfg))
+
+    def _with_v21_fields(*_args, **_kwargs):
+        return {
+            "event_type": "geo_political",
+            "sentiment": "negative",
+            "confidence": 92,
+            "recommended_chain": "geo_chain",
+            "narrative_vs_fact": "fact",
+            "event_scope": "macro",
+            "novelty_score": 70,  # should normalize to 0.7
+            "entities": ["Hormuz", {"type": "country", "value": "Iran"}],
+            "transmission_path": ["Strait risk up", "Oil logistics tighter", "Inflation risk up"],
+            "transmission_candidates": ["shipping_cost", "energy_supply"],
+            "provider": "mock_provider",
+            "latency_ms": 12,
+        }
+
+    monkeypatch.setattr(analyzer, "_call_provider", _with_v21_fields)
+    out = analyzer.analyze("headline", "raw")
+
+    assert out["verdict"] == "hit"
+    assert out["narrative_vs_fact"] == "fact"
+    assert out["event_scope"] == "Macro"
+    assert out["novelty_score"] == 0.7
+    assert out["entities"][0] == {"type": "generic", "value": "Hormuz"}
+    assert out["entities"][1] == {"type": "country", "value": "Iran"}
+    assert out["transmission_path"] == ["Strait risk up", "Oil logistics tighter", "Inflation risk up"]

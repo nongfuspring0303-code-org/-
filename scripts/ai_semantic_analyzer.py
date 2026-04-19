@@ -189,6 +189,13 @@ class SemanticAnalyzer:
         base = self._openai_base_url().rstrip("/")
         candidates: List[str] = []
 
+        # OpenClaw local gateway currently exposes the OpenAI-compatible route at /v1/chat/completions.
+        # Restricting candidates here avoids deterministic 404 noise from legacy probe paths.
+        if self._is_openclaw_gateway_base(base):
+            if base.endswith("/v1"):
+                return [f"{base}/chat/completions"]
+            return [f"{base}/v1/chat/completions"]
+
         if base.endswith("/v1"):
             root = base[:-3].rstrip("/")
             candidates.extend(
@@ -462,6 +469,8 @@ class SemanticAnalyzer:
         headers: Dict[str, str],
         payload: Dict[str, Any],
         timeout_seconds: float,
+        not_found_retries: int = 0,
+        disable_proxy: bool = False,
     ) -> Tuple[requests.Response | None, str, str]:
         candidates = self._openai_endpoint_candidates()
         if self._openai_endpoint_cache and self._openai_endpoint_cache in candidates:
@@ -470,19 +479,34 @@ class SemanticAnalyzer:
         last_error = ""
         last_response: requests.Response | None = None
         for endpoint in candidates:
-            try:
-                response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout_seconds)
-            except requests.RequestException as exc:
-                last_error = str(exc)
-                continue
+            max_attempts = max(1, int(not_found_retries) + 1)
+            for attempt in range(max_attempts):
+                try:
+                    request_kwargs: Dict[str, Any] = {
+                        "headers": headers,
+                        "json": payload,
+                        "timeout": timeout_seconds,
+                    }
+                    if disable_proxy:
+                        request_kwargs["proxies"] = {"http": "", "https": ""}
+                    response = requests.post(endpoint, **request_kwargs)
+                except requests.RequestException as exc:
+                    last_error = str(exc)
+                    if attempt < max_attempts - 1:
+                        time.sleep(min(1.2, 0.25 * (attempt + 1)))
+                        continue
+                    break
 
-            last_response = response
-            if response.status_code == 404:
-                last_error = "endpoint_not_found"
-                continue
+                last_response = response
+                if response.status_code == 404:
+                    last_error = "endpoint_not_found"
+                    if attempt < max_attempts - 1:
+                        time.sleep(min(0.8, 0.2 * (attempt + 1)))
+                        continue
+                    break
 
-            self._openai_endpoint_cache = endpoint
-            return response, endpoint, ""
+                self._openai_endpoint_cache = endpoint
+                return response, endpoint, ""
 
         return last_response, "", last_error or "openai_endpoint_not_found"
 
@@ -526,10 +550,15 @@ class SemanticAnalyzer:
             payload["response_format"] = {"type": "json_object"}
 
         timeout_seconds = max(5.0, timeout_ms / 1000.0)
+        if via_gateway:
+            # Gateway path can include upstream provider latency; use a wider client timeout window.
+            timeout_seconds = max(timeout_seconds, 20.0)
         response, endpoint, route_error = self._post_openai_with_candidates(
             headers=headers,
             payload=payload,
             timeout_seconds=timeout_seconds,
+            not_found_retries=5 if via_gateway else 0,
+            disable_proxy=via_gateway,
         )
         if response is None:
             return self._abstain_response(
@@ -552,6 +581,7 @@ class SemanticAnalyzer:
                 headers=retry_headers,
                 payload=payload,
                 timeout_seconds=timeout_seconds,
+                disable_proxy=via_gateway,
             )
             if response is None:
                 return self._abstain_response(
@@ -570,6 +600,7 @@ class SemanticAnalyzer:
                     headers=headers,
                     payload=retry_payload,
                     timeout_seconds=timeout_seconds,
+                    disable_proxy=via_gateway,
                 )
                 if response is None:
                     return self._abstain_response(
@@ -577,6 +608,24 @@ class SemanticAnalyzer:
                         provider="openai",
                         model=use_model,
                     )
+
+        # Gateway occasionally returns transient 404 on otherwise healthy routes.
+        # Re-probe once with cache cleared before finalizing fallback.
+        if response.status_code == 404 and via_gateway:
+            self._openai_endpoint_cache = ""
+            response, endpoint, route_error = self._post_openai_with_candidates(
+                headers=headers,
+                payload=payload,
+                timeout_seconds=timeout_seconds,
+                not_found_retries=5,
+                disable_proxy=True,
+            )
+            if response is None:
+                return self._abstain_response(
+                    fallback_reason=f"openai_route_error:{route_error[:80]}",
+                    provider="openai",
+                    model=use_model,
+                )
 
         if response.status_code >= 400:
             reason = self._extract_openai_error(response)

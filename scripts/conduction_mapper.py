@@ -9,6 +9,7 @@ rule.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 import sys
@@ -30,6 +31,8 @@ from transmission_engine.core.factor_vectorizer import FactorVectorizer
 
 class ConductionMapper(EDTModule):
     """Structured event conduction mapper."""
+
+    _SYMBOL_RE = re.compile(r"^[A-Z0-9.\-]{1,10}$")
 
     def __init__(self, config_path: Optional[str] = None):
         super().__init__("ConductionMapper", "1.0.0", config_path)
@@ -169,6 +172,15 @@ class ConductionMapper(EDTModule):
         return []
 
     @staticmethod
+    def _is_valid_symbol(symbol: Any) -> bool:
+        normalized = str(symbol or "").strip().upper()
+        if not normalized:
+            return False
+        if not ConductionMapper._SYMBOL_RE.match(normalized):
+            return False
+        return any(ch.isalpha() for ch in normalized)
+
+    @staticmethod
     def _normalize_recommended_stocks(semantic_output: Optional[Dict[str, Any]]) -> List[str]:
         if not semantic_output or not isinstance(semantic_output, dict):
             return []
@@ -179,11 +191,106 @@ class ConductionMapper(EDTModule):
         seen = set()
         for symbol in recommended:
             normalized_symbol = str(symbol or "").strip().upper()
-            if not normalized_symbol or normalized_symbol in seen:
+            if not ConductionMapper._is_valid_symbol(normalized_symbol):
+                continue
+            if normalized_symbol in seen:
                 continue
             seen.add(normalized_symbol)
             normalized.append(normalized_symbol)
         return normalized
+
+    @staticmethod
+    def _normalize_entity_stocks(semantic_output: Optional[Dict[str, Any]]) -> List[str]:
+        if not semantic_output or not isinstance(semantic_output, dict):
+            return []
+        entities = semantic_output.get("entities", [])
+        if not isinstance(entities, list):
+            return []
+
+        # Keep entity extraction conservative: only consume explicit ticker/symbol types.
+        out: List[str] = []
+        seen = set()
+        for item in entities:
+            if not isinstance(item, dict):
+                continue
+            entity_type = str(item.get("type", "")).strip().lower()
+            if entity_type not in {"ticker", "symbol", "stock"}:
+                continue
+            raw_value = str(item.get("value", "")).strip().upper()
+            if not ConductionMapper._is_valid_symbol(raw_value):
+                continue
+            if raw_value in seen:
+                continue
+            seen.add(raw_value)
+            out.append(raw_value)
+        return out
+
+    @staticmethod
+    def _merge_stock_candidates(
+        base_candidates: List[Dict[str, Any]],
+        semantic_candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        seen = set()
+
+        for candidate in base_candidates + semantic_candidates:
+            symbol = str(candidate.get("symbol", "")).strip().upper()
+            if not symbol or symbol in seen:
+                continue
+            seen.add(symbol)
+            merged.append(candidate)
+        return merged
+
+    def _build_semantic_stock_candidates(
+        self,
+        semantic_output: Optional[Dict[str, Any]],
+        sector_impacts: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not semantic_output or not isinstance(semantic_output, dict):
+            return []
+
+        recommended = self._normalize_recommended_stocks(semantic_output)
+        entity_symbols = self._normalize_entity_stocks(semantic_output)
+
+        symbols: List[str] = []
+        seen = set()
+        for symbol in recommended + entity_symbols:
+            if symbol in seen:
+                continue
+            seen.add(symbol)
+            symbols.append(symbol)
+        if not symbols:
+            return []
+
+        sentiment = str(semantic_output.get("sentiment", "neutral")).strip().lower()
+        if sentiment == "positive":
+            direction = "long"
+        elif sentiment == "negative":
+            direction = "short"
+        else:
+            direction = "watch"
+
+        sector_name = str((sector_impacts or [{}])[0].get("sector", "未知板块"))
+        transmission = semantic_output.get("transmission_candidates", [])
+        if not isinstance(transmission, list):
+            transmission = []
+        transmission_hint = ",".join(str(x).strip() for x in transmission if str(x).strip())[:120]
+
+        candidates: List[Dict[str, Any]] = []
+        for symbol in symbols[:5]:
+            reason = "AI semantic recommendation"
+            if transmission_hint:
+                reason = f"AI semantic recommendation ({transmission_hint})"
+            candidates.append(
+                {
+                    "symbol": symbol,
+                    "sector": sector_name,
+                    "direction": direction,
+                    "reason": reason,
+                    "source": "semantic",
+                }
+            )
+        return candidates
 
     def _build_template_mapping(self, template: Dict[str, Any], sector_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         levels = template.get("levels", []) or []
@@ -459,11 +566,16 @@ class ConductionMapper(EDTModule):
 
         self._apply_sector_mapping(mapping["sector_impacts"], sector_data)
 
-        if not mapping["macro_factors"] or not mapping["sector_impacts"]:
-            mapping["stock_candidates"] = []
-            needs_manual_review = True
-        else:
-            needs_manual_review = False
+        semantic_stock_candidates = self._build_semantic_stock_candidates(
+            semantic_output=semantic_out,
+            sector_impacts=mapping.get("sector_impacts", []),
+        )
+        mapping["stock_candidates"] = self._merge_stock_candidates(
+            base_candidates=list(mapping.get("stock_candidates", [])),
+            semantic_candidates=semantic_stock_candidates,
+        )
+
+        needs_manual_review = not (mapping["macro_factors"] and mapping["sector_impacts"])
 
         return ModuleOutput(
             status=ModuleStatus.SUCCESS,

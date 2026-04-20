@@ -187,3 +187,34 @@ def test_translate_headline_falls_back_when_translator_errors(monkeypatch):
     assert translated is not None
     assert "美国SEC" in translated
     assert "市场" in translated
+
+
+def test_run_once_queues_fresh_news_without_dropping(monkeypatch):
+    monitor = _build_monitor(monkeypatch)
+    monitor._bootstrap_done = True
+    monitor.max_process_per_cycle = 1
+
+    processed_ids = []
+
+    def _fake_process(news):
+        processed_ids.append(news.get("event_id"))
+        return True
+
+    # Ingestion order is typically newest -> oldest.
+    news_batch = [
+        {"event_id": "N2", "headline": "newer", "timestamp": "2026-04-20T10:00:10Z", "metadata": {}},
+        {"event_id": "N1", "headline": "older", "timestamp": "2026-04-20T10:00:00Z", "metadata": {}},
+    ]
+    monitor._fetch_latest_news = lambda: news_batch
+    monitor._process_news = _fake_process
+
+    # First round: enqueue both, process 1 due to max_process_per_cycle=1.
+    assert monitor.run_once() is True
+    assert processed_ids == ["N1"]
+    assert len(monitor._pending_news) == 1
+
+    # Second round: no fresh items, but pending queue still drains.
+    monitor._fetch_latest_news = lambda: []
+    assert monitor.run_once() is True
+    assert processed_ids == ["N1", "N2"]
+    assert len(monitor._pending_news) == 0

@@ -185,6 +185,106 @@ class ConductionMapper(EDTModule):
             normalized.append(normalized_symbol)
         return normalized
 
+    @staticmethod
+    def _normalize_entity_stocks(semantic_output: Optional[Dict[str, Any]]) -> List[str]:
+        if not semantic_output or not isinstance(semantic_output, dict):
+            return []
+        entities = semantic_output.get("entities", [])
+        if not isinstance(entities, list):
+            return []
+
+        # Keep entity extraction conservative: only consume explicit ticker/symbol types.
+        out: List[str] = []
+        seen = set()
+        for item in entities:
+            if not isinstance(item, dict):
+                continue
+            entity_type = str(item.get("type", "")).strip().lower()
+            if entity_type not in {"ticker", "symbol", "stock"}:
+                continue
+            raw_value = str(item.get("value", "")).strip().upper()
+            if not raw_value:
+                continue
+            if raw_value in seen:
+                continue
+            seen.add(raw_value)
+            out.append(raw_value)
+        return out
+
+    @staticmethod
+    def _merge_stock_candidates(
+        base_candidates: List[Dict[str, Any]],
+        semantic_candidates: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        seen = set()
+
+        for candidate in semantic_candidates + base_candidates:
+            symbol = str(candidate.get("symbol", "")).strip().upper()
+            if not symbol or symbol in seen:
+                continue
+            seen.add(symbol)
+            merged.append(candidate)
+        return merged
+
+    def _build_semantic_stock_candidates(
+        self,
+        semantic_output: Optional[Dict[str, Any]],
+        sector_impacts: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if not semantic_output or not isinstance(semantic_output, dict):
+            return []
+
+        recommended = self._normalize_recommended_stocks(semantic_output)
+        entity_symbols = self._normalize_entity_stocks(semantic_output)
+
+        symbols: List[str] = []
+        seen = set()
+        for symbol in recommended + entity_symbols:
+            if symbol in seen:
+                continue
+            seen.add(symbol)
+            symbols.append(symbol)
+        if not symbols:
+            return []
+
+        sentiment = str(semantic_output.get("sentiment", "neutral")).strip().lower()
+        if sentiment == "positive":
+            direction = "long"
+        elif sentiment == "negative":
+            direction = "short"
+        else:
+            first_direction = str((sector_impacts or [{}])[0].get("direction", "benefit")).strip().lower()
+            direction = "long" if first_direction in {"benefit", "long"} else "short"
+
+        sector_name = str((sector_impacts or [{}])[0].get("sector", "未知板块"))
+        confidence = float(semantic_output.get("confidence", 0) or 0)
+        novelty = float(semantic_output.get("novelty_score", 0) or 0)
+        event_beta = max(0.6, min(1.5, 0.8 + confidence / 250.0 + novelty * 0.3))
+        transmission = semantic_output.get("transmission_candidates", [])
+        if not isinstance(transmission, list):
+            transmission = []
+        transmission_hint = ",".join(str(x).strip() for x in transmission if str(x).strip())[:120]
+
+        candidates: List[Dict[str, Any]] = []
+        for symbol in symbols[:5]:
+            reason = "AI semantic recommendation"
+            if transmission_hint:
+                reason = f"AI semantic recommendation ({transmission_hint})"
+            candidates.append(
+                {
+                    "symbol": symbol,
+                    "sector": sector_name,
+                    "direction": direction,
+                    "event_beta": round(event_beta, 2),
+                    "liquidity_tier": "high",
+                    "event_relevance": round(confidence, 2),
+                    "reason": reason,
+                    "source": "semantic",
+                }
+            )
+        return candidates
+
     def _build_template_mapping(self, template: Dict[str, Any], sector_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         levels = template.get("levels", []) or []
         conduction_path = [str(level.get("name", "")) for level in levels if level.get("name")]
@@ -448,20 +548,40 @@ class ConductionMapper(EDTModule):
             mapping = self._policy_mapping(policy_intervention, sector_data)
         else:
             fallback_cfg = self.config_center.get_registered("gate_policy", {}).get("conduction_mapper", {})
+            fallback_sectors = []
+            is_hit = semantic_out.get("ai_verdict") == "hit" or semantic_out.get("verdict") == "hit"
+            if is_hit:
+                fallback_sectors = [{
+                    "sector": "Tech / Macro Innovation",
+                    "direction": "benefit" if semantic_out.get("sentiment") == "positive" else "hurt",
+                    "impact_score": round(float(semantic_out.get("confidence", 50)) / 100.0, 2),
+                    "reason": "AI Semantic Intelligence Fallback"
+                }]
             mapping = {
                 "macro_factors": [],
                 "asset_impacts": [],
-                "sector_impacts": [],
+                "sector_impacts": fallback_sectors,
                 "stock_candidates": [],
-                "conduction_path": ["事件信息不足，需人工补充传导路径"],
+                "conduction_path": ["事件信息无法精确分类，已通过 AI 语义自动映射"],
                 "confidence": float(fallback_cfg.get("fallback_confidence", 35)),
             }
 
         self._apply_sector_mapping(mapping["sector_impacts"], sector_data)
 
+        semantic_stock_candidates = self._build_semantic_stock_candidates(
+            semantic_output=semantic_out,
+            sector_impacts=mapping.get("sector_impacts", []),
+        )
+        mapping["stock_candidates"] = self._merge_stock_candidates(
+            base_candidates=list(mapping.get("stock_candidates", [])),
+            semantic_candidates=semantic_stock_candidates,
+        )
+
         if not mapping["macro_factors"] or not mapping["sector_impacts"]:
-            mapping["stock_candidates"] = []
-            needs_manual_review = True
+            if not mapping.get("stock_candidates"):
+                needs_manual_review = True
+            else:
+                needs_manual_review = True # Keep AI candidates, just flag for audit
         else:
             needs_manual_review = False
 
@@ -482,6 +602,7 @@ class ConductionMapper(EDTModule):
                 "market_impact_confidence": classification.get("market_impact_confidence"),
                 "ai_recommendation_source": "semantic_analyzer" if ai_recommended_stocks else "none",
                 "ai_recommended_stocks": ai_recommended_stocks,
+                "ai_entity_stocks": self._normalize_entity_stocks(semantic_out),
                 "ai_recommendation_chain": semantic_out.get("recommended_chain", ""),
                 "ai_recommendation_confidence": semantic_out.get("confidence", 0),
                 "time_horizons": {

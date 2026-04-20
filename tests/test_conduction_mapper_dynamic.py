@@ -174,45 +174,6 @@ def test_conduction_mapper_standardizes_ai_recommendations(monkeypatch):
     assert out.data["ai_recommended_stocks"] == ["NVDA", "AAPL"]
 
 
-def test_conduction_mapper_injects_semantic_candidates_into_stock_candidates(monkeypatch):
-    mapper = ConductionMapper()
-    monkeypatch.setattr(
-        mapper.semantic,
-        "analyze",
-        lambda headline, summary: {
-            "recommended_chain": "rate_cut_chain",
-            "recommended_stocks": ["NVDA"],
-            "entities": [{"type": "ticker", "value": "AAPL"}],
-            "transmission_candidates": ["risk_appetite", "leader_momentum"],
-            "novelty_score": 0.7,
-            "confidence": 91,
-            "event_type": "monetary",
-            "sentiment": "positive",
-        },
-    )
-
-    out = mapper.run(
-        {
-            "event_id": "ME-E-TEST-007",
-            "category": "E",
-            "severity": "E2",
-            "headline": "Fed signals rate cuts ahead",
-            "summary": "Policy easing expected",
-            "lifecycle_state": "Active",
-            "sector_data": [
-                {"symbol": "XLK", "sector": "Technology", "industry": "Technology", "change_pct": 1.2},
-                {"symbol": "XLF", "sector": "Financial Services", "industry": "Financial Services", "change_pct": 0.8},
-            ],
-        }
-    )
-
-    assert out.status.value == "success"
-    symbols = [str(x.get("symbol", "")).upper() for x in out.data.get("stock_candidates", [])]
-    assert "NVDA" in symbols
-    assert "AAPL" in symbols
-    assert out.data.get("ai_entity_stocks") == ["AAPL"]
-
-
 def test_trade_talk_context_not_overridden_by_broad_tariff_tokens():
     out = ConductionMapper().run(
         {

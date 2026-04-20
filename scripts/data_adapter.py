@@ -17,6 +17,11 @@ except ImportError:
     yaml = None
 
 try:
+    import yfinance as yf
+except ImportError:
+    yf = None
+
+try:
     from edt_module_base import CacheManager
 except ImportError:
     logging.warning("CacheManager import failed; DataAdapter cache is disabled.")
@@ -155,7 +160,49 @@ class DataAdapter:
         except Exception:
             return self.write_health_summary()
 
-    def fetch_news(self) -> Dict[str, Any]:
+    def _normalize_news_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        raw_meta = item.get("metadata", {})
+        if not isinstance(raw_meta, dict):
+            raw_meta = {}
+
+        keywords = raw_meta.get("keywords", [])
+        if not isinstance(keywords, list):
+            keywords = []
+
+        provenance = raw_meta.get("provenance")
+        if provenance is None:
+            provenance = item.get("provenance")
+
+        is_test_data = bool(
+            raw_meta.get("is_test_data")
+            or item.get("is_test_data")
+            or item.get("is_fallback")
+        )
+
+        normalized_meta = dict(raw_meta)
+        normalized_meta["keywords"] = keywords
+        normalized_meta.setdefault("region", "US")
+        normalized_meta.setdefault("asset_class", ["equities", "bonds", "usd"])
+        normalized_meta["trace_id"] = item.get("trace_id") or raw_meta.get("trace_id")
+        normalized_meta["is_test_data"] = is_test_data
+        if provenance is not None:
+            normalized_meta["provenance"] = provenance
+
+        return {
+            "headline": item.get("headline", ""),
+            "source": item.get("source_url", ""),
+            "source_url": item.get("source_url", ""),
+            "source_type": item.get("source_type", ""),
+            "source_mode": item.get("source_mode", ""),
+            "timestamp": item.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            "raw_text": item.get("raw_text", ""),
+            "event_id": item.get("event_id", ""),
+            "is_test_data": is_test_data,
+            "provenance": provenance,
+            "metadata": normalized_meta,
+        }
+
+    def fetch_news_batch(self, max_items: int = 10) -> List[Dict[str, Any]]:
         try:
             from ai_event_intel import NewsIngestion
         except ImportError as exc:
@@ -168,26 +215,14 @@ class DataAdapter:
             if not config_path:
                 config_path = str(Path(__file__).resolve().parent.parent / "configs" / "edt-modules-config.yaml")
             # 使用当前配置文件的超时设置
-            out = NewsIngestion(config_path).run({"max_items": 1})
+            out = NewsIngestion(config_path).run({"max_items": max(1, int(max_items))})
             if out.data.get("items"):
-                item = out.data["items"][0]
-                return {
-                    "headline": item.get("headline", ""),
-                    "source": item.get("source_url", ""),
-                    "source_url": item.get("source_url", ""),
-                    "source_type": item.get("source_type", ""),
-                    "source_mode": item.get("source_mode", ""),
-                    "timestamp": item.get("timestamp", datetime.now(timezone.utc).isoformat()),
-                    "raw_text": item.get("raw_text", ""),
-                    "metadata": {
-                        "keywords": [],
-                        "region": "US",
-                        "asset_class": ["equities", "bonds", "usd"],
-                        "trace_id": item.get("trace_id"),
-                    },
-                }
+                normalized: List[Dict[str, Any]] = []
+                for item in out.data["items"]:
+                    normalized.append(self._normalize_news_item(item))
+                return normalized
 
-        return {
+        return [{
             "headline": "Federal Reserve announces emergency rate cut of 50bps",
             "source": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
             "source_url": "https://www.federalreserve.gov/newsevents/2026/march/h1234567a.htm",
@@ -195,6 +230,7 @@ class DataAdapter:
             "source_mode": "pull",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "raw_text": "The Federal Reserve has announced an emergency rate cut...",
+            "event_id": "FALLBACK-NEWS-0001",
             "metadata": {
                 "keywords": ["Fed", "emergency", "rate cut"],
                 "region": "US",
@@ -203,9 +239,32 @@ class DataAdapter:
                 "is_test_data": True,  # 标记为测试数据
                 "test_data_note": "当无法获取真实新闻时使用的fallback测试数据",
             }
-        }
+        }]
+
+    def fetch_news(self) -> Dict[str, Any]:
+        batch = self.fetch_news_batch(max_items=1)
+        return batch[0] if batch else {}
 
     def _fetch_vix(self) -> Optional[Dict[str, Any]]:
+        # Prefer yfinance (more resilient than direct Yahoo quote endpoint),
+        # then fallback to the legacy URL path for compatibility.
+        if yf is not None:
+            try:
+                ticker = yf.Ticker("^VIX")
+                fast = ticker.fast_info or {}
+                level = fast.get("lastPrice")
+                prev_close = fast.get("previousClose")
+                change_pct = None
+                if level is not None and prev_close not in (None, 0):
+                    change_pct = (float(level) - float(prev_close)) / float(prev_close) * 100.0
+                if level is not None:
+                    return {
+                        "level": float(level),
+                        "change_pct": change_pct,
+                    }
+            except Exception as exc:
+                logging.warning("market_data_fetch_failed source=yfinance symbol=^VIX reason=%s", exc)
+
         timeout = self._get_int_config("data_adapter.market_data.timeout_seconds", 5)
         url = self._get_config(
             "data_adapter.market_data.vix_url",
@@ -225,6 +284,19 @@ class DataAdapter:
         }
 
     def _fetch_spx(self) -> Optional[Dict[str, Any]]:
+        # Prefer yfinance first; fallback to legacy URL path.
+        if yf is not None:
+            try:
+                ticker = yf.Ticker("^GSPC")
+                fast = ticker.fast_info or {}
+                level = fast.get("lastPrice")
+                prev_close = fast.get("previousClose")
+                if level is not None and prev_close not in (None, 0):
+                    change_pct = (float(level) - float(prev_close)) / float(prev_close) * 100.0
+                    return {"change_pct": change_pct}
+            except Exception as exc:
+                logging.warning("market_data_fetch_failed source=yfinance symbol=^GSPC reason=%s", exc)
+
         timeout = self._get_int_config("data_adapter.market_data.timeout_seconds", 5)
         url = self._get_config(
             "data_adapter.market_data.spx_url",

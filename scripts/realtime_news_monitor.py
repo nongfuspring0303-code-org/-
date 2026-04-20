@@ -55,6 +55,12 @@ class RealtimeNewsMonitor:
         self.node_role = self._load_node_role()
         self.master_api = self._load_master_api()
         self.last_news_signature = ""  # 用于检测新新闻
+        self._seen_signatures: Dict[str, float] = {}
+        self._seen_ttl_seconds = 6 * 3600
+        self._bootstrap_done = False
+        self.batch_news_limit = 20
+        self._pending_news: List[Dict[str, Any]] = []
+        self.max_process_per_cycle = max(1, int(os.getenv("EDT_MAX_PROCESS_PER_CYCLE", "1") or "1"))
         self.translator = Translator() if Translator else None
         if not self.translator:
             logger.warning("⚠️ googletrans 不可用，中文翻译将跳过")
@@ -124,6 +130,9 @@ class RealtimeNewsMonitor:
             return []
 
         try:
+            if hasattr(self.data_adapter, "fetch_news_batch"):
+                result = self.data_adapter.fetch_news_batch(max_items=self.batch_news_limit)
+                return result if isinstance(result, list) else []
             result = self.data_adapter.fetch_news()
             return [result] if result else []
         except Exception as e:
@@ -518,20 +527,62 @@ class RealtimeNewsMonitor:
     def run_once(self) -> bool:
         """运行一次检查"""
         news_list = self._fetch_latest_news()
-        
-        if not news_list:
+
+        if not news_list and not self._pending_news:
             logger.warning("📭 新闻摄取为空，已跳过下游触发")
             return False
-        
-        latest_news = news_list[0]
-        signature = self._get_news_signature(latest_news)
-        
-        if signature == self.last_news_signature:
+
+        fresh: List[Dict[str, Any]] = []
+        if news_list:
+            now = time.time()
+            # 清理过期签名，避免集合无限增长。
+            stale = [sig for sig, ts in self._seen_signatures.items() if now - ts > self._seen_ttl_seconds]
+            for sig in stale:
+                self._seen_signatures.pop(sig, None)
+
+            # NewsIngestion 默认按时间倒序，处理时改为正序，避免旧消息被新消息长期压住。
+            ordered = list(reversed(news_list))
+
+            # 首次启动仅建立去重基线，避免把历史批量新闻当作实时新增推送。
+            if not self._bootstrap_done:
+                for item in ordered:
+                    sig = self._get_news_signature(item)
+                    if sig:
+                        self._seen_signatures[sig] = now
+                self._bootstrap_done = True
+                logger.info("🧭 首轮新闻预热完成（%d 条），本轮不触发下游", len(ordered))
+                return False
+
+            for item in ordered:
+                sig = self._get_news_signature(item)
+                if not sig:
+                    continue
+                if sig in self._seen_signatures:
+                    continue
+                self._seen_signatures[sig] = now
+                fresh.append(item)
+
+            if fresh:
+                self._pending_news.extend(fresh)
+
+        if not self._pending_news:
             logger.debug("📭 无新新闻")
             return False
-        
-        self.last_news_signature = signature
-        return self._process_news(latest_news)
+
+        process_count = min(self.max_process_per_cycle, len(self._pending_news))
+        processed_any = False
+        for _ in range(process_count):
+            item = self._pending_news.pop(0)
+            self.last_news_signature = self._get_news_signature(item)
+            processed_any = self._process_news(item) or processed_any
+
+        logger.info(
+            "🆕 实时采样: 新增=%d 本轮处理=%d 待处理=%d",
+            len(fresh),
+            process_count,
+            len(self._pending_news),
+        )
+        return processed_any
     
     def run_loop(self, max_iterations: Optional[int] = None):
         """持续运行"""

@@ -510,6 +510,20 @@ class SemanticAnalyzer:
                 "recommended_stocks": [],
                 "reason": "deterministic keyword match",
             }
+
+        # Deterministic fallback: keep provider contract explicit even when
+        # no provider strategy/keyword branch is matched.
+        return {
+            "event_type": "other",
+            "sentiment": "neutral",
+            "confidence": 0,
+            "recommended_chain": "",
+            "recommended_stocks": [],
+            "reason": "deterministic fallback: provider strategy not matched",
+            "fallback_reason": "provider_unsupported",
+            "provider": provider_lower or "unknown",
+        }
+
     @staticmethod
     def _safe_json(response: requests.Response) -> Dict[str, Any]:
         try:

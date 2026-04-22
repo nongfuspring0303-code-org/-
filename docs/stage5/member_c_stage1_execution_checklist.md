@@ -26,9 +26,9 @@
 
 ## 4) Replay/Join Integrity (C implementation responsibility)
 - [x] Implement writer path for replay evidence.
-- [ ] Implement join validator with required key checks.
-- [ ] Ensure replay primary-key completeness can be measured.
-- [ ] Ensure orphan replay can be detected and reported.
+- [x] Implement join validator with required key checks.
+- [x] Ensure replay primary-key completeness can be measured.
+- [x] Ensure orphan replay can be detected and reported.
 
 ## 5) Decision/Gate Evidence Requirements
 - [x] Decision gate log records allow/block outcome.
@@ -37,8 +37,8 @@
 - [x] Execution emit log can be joined back to replay via trace keys.
 
 ## 6) Non-Regression & Safety Checks
-- [ ] Retries do not duplicate replay writes.
-- [ ] Retries do not duplicate execution emits.
+- [x] Retries do not duplicate replay writes.
+- [x] Retries do not duplicate execution emits.
 - [ ] Output can answer:
   - [x] what was ingested,
   - [x] whether market data was trustworthy,

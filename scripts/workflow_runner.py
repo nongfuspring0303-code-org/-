@@ -70,6 +70,13 @@ OUTPUT_GATE_PROVENANCE_FIELDS = (
     "market_data_fallback_used",
 )
 
+REPLAY_JOIN_REQUIRED_KEYS = (
+    "event_trace_id",
+    "request_id",
+    "batch_id",
+    "event_hash",
+)
+
 
 class WorkflowRunner:
     """Main orchestration for execution-layer flow."""
@@ -93,11 +100,13 @@ class WorkflowRunner:
         self._replay_write_log_path = self.logs_dir / "replay_write.jsonl"
         self._decision_gate_log_path = self.logs_dir / "decision_gate.jsonl"
         self._execution_emit_log_path = self.logs_dir / "execution_emit.jsonl"
+        self._replay_join_validation_log_path = self.logs_dir / "replay_join_validation.jsonl"
         for path in (
             self._replay_log_path,
             self._replay_write_log_path,
             self._decision_gate_log_path,
             self._execution_emit_log_path,
+            self._replay_join_validation_log_path,
         ):
             path.touch(exist_ok=True)
         self._replay_lock = threading.Lock()
@@ -620,6 +629,24 @@ class WorkflowRunner:
             return list(value)
         return [value]
 
+    @staticmethod
+    def _resolve_event_hash(payload: Dict[str, Any], trace_id: str) -> str:
+        event_hash = str(payload.get("event_hash", "")).strip()
+        if event_hash:
+            return event_hash
+        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        digest = hashlib.sha1(f"{trace_id}|{canonical}".encode("utf-8")).hexdigest()[:16].upper()
+        return f"EVH-{digest}"
+
+    @staticmethod
+    def _missing_join_keys(record: Dict[str, Any]) -> list[str]:
+        missing: list[str] = []
+        for key in REPLAY_JOIN_REQUIRED_KEYS:
+            value = record.get(key)
+            if value is None or str(value).strip() == "":
+                missing.append(key)
+        return missing
+
     def _validate_output_gate_contract(self, payload: Dict[str, Any]) -> list[str]:
         missing: list[str] = []
 
@@ -725,7 +752,7 @@ class WorkflowRunner:
         final_action: str,
         payload: Dict[str, Any],
         action_card: Dict[str, Any],
-    ) -> None:
+    ) -> bool:
         try:
             # Stage2 durability guarantee:
             # run() should only return after replay evidence has been appended.
@@ -737,8 +764,85 @@ class WorkflowRunner:
                 payload=payload,
                 action_card=action_card,
             )
+            return True
         except Exception as exc:
             logging.warning("replay_log_write_failed: %s", exc)
+            return False
+
+    def _record_replay_and_validate_join(
+        self,
+        *,
+        result: Dict[str, Any],
+        trace_id: str,
+        request_id: str | None,
+        batch_id: str | None,
+        event_hash: str,
+        final_action: str,
+        payload: Dict[str, Any],
+        action_card: Dict[str, Any],
+        execution_emit_expected: bool,
+    ) -> None:
+        replay_write_ok = self._submit_replay_log(
+            trace_id=trace_id,
+            request_id=request_id,
+            batch_id=batch_id,
+            final_action=final_action,
+            payload=payload,
+            action_card=action_card,
+        )
+        join_record = {
+            "logged_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "trace_id": trace_id,
+            "event_trace_id": trace_id,
+            "request_id": request_id,
+            "batch_id": batch_id,
+            "event_hash": event_hash,
+            "final_action": final_action,
+            "required_keys": list(REPLAY_JOIN_REQUIRED_KEYS),
+            "missing_required_keys": self._missing_join_keys(
+                {
+                    "event_trace_id": trace_id,
+                    "request_id": request_id,
+                    "batch_id": batch_id,
+                    "event_hash": event_hash,
+                }
+            ),
+            "replay_write_ok": replay_write_ok,
+            "execution_emit_expected": bool(execution_emit_expected),
+        }
+        join_record["replay_primary_key_complete"] = not join_record["missing_required_keys"]
+        join_record["replay_primary_key_completeness_ratio"] = (
+            1.0 if join_record["replay_primary_key_complete"] else 0.0
+        )
+        join_record["orphan_replay_count"] = 0 if join_record["replay_primary_key_complete"] and replay_write_ok else 1
+        join_record["execution_joinable_to_replay"] = (
+            True
+            if not execution_emit_expected
+            else bool(join_record["replay_primary_key_complete"] and replay_write_ok)
+        )
+        join_record["orphan_execution_count"] = (
+            0
+            if not execution_emit_expected or join_record["execution_joinable_to_replay"]
+            else 1
+        )
+        join_record["validation_status"] = (
+            "pass"
+            if join_record["orphan_replay_count"] == 0 and join_record["orphan_execution_count"] == 0
+            else "fail"
+        )
+        self._append_jsonl(self._replay_join_validation_log_path, join_record, self._evidence_lock)
+        result["replay_join_validation"] = {
+            "required_keys": join_record["required_keys"],
+            "missing_required_keys": join_record["missing_required_keys"],
+            "replay_primary_key_complete": join_record["replay_primary_key_complete"],
+            "replay_primary_key_completeness_ratio": join_record["replay_primary_key_completeness_ratio"],
+            "orphan_replay_count": join_record["orphan_replay_count"],
+            "execution_emit_expected": join_record["execution_emit_expected"],
+            "execution_joinable_to_replay": join_record["execution_joinable_to_replay"],
+            "orphan_execution_count": join_record["orphan_execution_count"],
+            "replay_write_ok": replay_write_ok,
+            "validation_status": join_record["validation_status"],
+        }
 
     def _append_jsonl(self, path: Path, record: Dict[str, Any], lock: threading.Lock) -> None:
         line = json.dumps(record, ensure_ascii=False)
@@ -921,9 +1025,12 @@ class WorkflowRunner:
         }
 
     def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(payload)
         request_id = payload.get("request_id")
         trace_id = str(payload.get("trace_id") or _stable_trace_id(payload, request_id))
         batch_id = payload.get("batch_id")
+        payload["event_hash"] = self._resolve_event_hash(payload, trace_id)
+        event_hash = payload["event_hash"]
         result: Dict[str, Any] = {
             "input": payload,
             "steps": [],
@@ -1056,13 +1163,16 @@ class WorkflowRunner:
                     "batch_id": batch_id,
                 }
                 result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "BLOCK")
-                self._submit_replay_log(
+                self._record_replay_and_validate_join(
+                    result=result,
                     trace_id=trace_id,
                     request_id=request_id,
                     batch_id=batch_id,
+                    event_hash=event_hash,
                     final_action="BLOCK",
                     payload=payload,
                     action_card=result["action_card"],
+                    execution_emit_expected=False,
                 )
                 self._log_decision_gate(
                     trace_id=trace_id,
@@ -1096,13 +1206,16 @@ class WorkflowRunner:
                     "batch_id": batch_id,
                 }
                 result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
-                self._submit_replay_log(
+                self._record_replay_and_validate_join(
+                    result=result,
                     trace_id=trace_id,
                     request_id=request_id,
                     batch_id=batch_id,
+                    event_hash=event_hash,
                     final_action="WATCH",
                     payload=payload,
                     action_card=result["action_card"],
+                    execution_emit_expected=False,
                 )
                 self._log_decision_gate(
                     trace_id=trace_id,
@@ -1138,13 +1251,16 @@ class WorkflowRunner:
                 "contract_version": contract_version,
             }
             result["action_card"] = self._build_action_card(payload, ai_factors, float(score), forced_action)
-            self._submit_replay_log(
+            self._record_replay_and_validate_join(
+                result=result,
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
+                event_hash=event_hash,
                 final_action=forced_action,
                 payload=payload,
                 action_card=result["action_card"],
+                execution_emit_expected=False,
             )
             self._log_decision_gate(
                 trace_id=trace_id,
@@ -1178,13 +1294,16 @@ class WorkflowRunner:
                 "confirmed": False,
             }
             result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "PENDING_CONFIRM")
-            self._submit_replay_log(
+            self._record_replay_and_validate_join(
+                result=result,
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
+                event_hash=event_hash,
                 final_action="PENDING_CONFIRM",
                 payload=payload,
                 action_card=result["action_card"],
+                execution_emit_expected=False,
             )
             self._log_decision_gate(
                 trace_id=trace_id,
@@ -1215,13 +1334,16 @@ class WorkflowRunner:
                 "contract_version": contract_version,
             }
             result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
-            self._submit_replay_log(
+            self._record_replay_and_validate_join(
+                result=result,
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
+                event_hash=event_hash,
                 final_action="WATCH",
                 payload=payload,
                 action_card=result["action_card"],
+                execution_emit_expected=False,
             )
             self._log_decision_gate(
                 trace_id=trace_id,
@@ -1253,13 +1375,16 @@ class WorkflowRunner:
                 "contract_version": contract_version,
             }
             result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
-            self._submit_replay_log(
+            self._record_replay_and_validate_join(
+                result=result,
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
+                event_hash=event_hash,
                 final_action="WATCH",
                 payload=payload,
                 action_card=result["action_card"],
+                execution_emit_expected=False,
             )
             self._mark_request_processed(request_id)
             return result
@@ -1294,13 +1419,16 @@ class WorkflowRunner:
                 "contract_version": contract_version,
             }
             result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
-            self._submit_replay_log(
+            self._record_replay_and_validate_join(
+                result=result,
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
+                event_hash=event_hash,
                 final_action="WATCH",
                 payload=payload,
                 action_card=result["action_card"],
+                execution_emit_expected=False,
             )
             self._log_decision_gate(
                 trace_id=trace_id,
@@ -1384,13 +1512,16 @@ class WorkflowRunner:
         }
         result["execution_receipt"] = execution_receipt
         result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "EXECUTE")
-        self._submit_replay_log(
+        self._record_replay_and_validate_join(
+            result=result,
             trace_id=trace_id,
             request_id=request_id,
             batch_id=batch_id,
+            event_hash=event_hash,
             final_action="EXECUTE",
             payload=payload,
             action_card=result["action_card"],
+            execution_emit_expected=True,
         )
         self._log_decision_gate(
             trace_id=trace_id,

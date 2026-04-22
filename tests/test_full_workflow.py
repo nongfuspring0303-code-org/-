@@ -68,6 +68,7 @@ def test_stage1_evidence_logs_written_with_trace_id(tmp_path):
     payload = {
         "request_id": "REQ-EVIDENCE-001",
         "batch_id": "BATCH-EVIDENCE-001",
+        "theme_tags": ["macro_event", "liquidity_shock"],
         "headline": "Fed announces emergency liquidity action after tariff shock",
         "source": "https://www.reuters.com/markets/us/example",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -96,19 +97,31 @@ def test_stage1_evidence_logs_written_with_trace_id(tmp_path):
         assert (logs_dir / name).exists(), name
 
     raw_record = json.loads((logs_dir / "raw_news_ingest.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
+    market_record = json.loads((logs_dir / "market_data_provenance.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
     gate_record = json.loads((logs_dir / "decision_gate.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
     replay_record = json.loads((logs_dir / "replay_write.jsonl").read_text(encoding="utf-8").strip().splitlines()[-1])
-
     assert raw_record["trace_id"] == trace_id
+    assert market_record["trace_id"] == trace_id
     assert gate_record["trace_id"] == trace_id
     assert replay_record["trace_id"] == trace_id
     assert raw_record["request_id"] == "REQ-EVIDENCE-001"
     assert gate_record["batch_id"] == "BATCH-EVIDENCE-001"
     assert replay_record["event_hash"] == raw_record["event_hash"]
     assert gate_record["event_hash"] == raw_record["event_hash"]
+    assert market_record["event_hash"] == raw_record["event_hash"]
+
+    assert gate_record["semantic_event_type"] in {"tariff", "geo_political", "earnings", "monetary", "energy", "shipping", "industrial", "tech", "healthcare", "regulatory", "merger", "inflation", "commodity", "credit", "natural_disaster", "pandemic", "other"}
+    assert isinstance(gate_record["sector_candidates"], list)
+    assert isinstance(gate_record["ticker_candidates"], list)
+    assert gate_record["a1_score"] is not None
+    assert gate_record["theme_tags"] == ["macro_event", "liquidity_shock"]
+    assert gate_record["tradeable"] is not None
+    assert isinstance(gate_record["opportunity_count"], int)
 
     emit_lines = (logs_dir / "execution_emit.jsonl").read_text(encoding="utf-8").strip().splitlines()
     if out["execution"]["final"]["action"] == "EXECUTE":
         emit_record = json.loads(emit_lines[-1])
         assert emit_record["trace_id"] == trace_id
         assert emit_record["event_hash"] == raw_record["event_hash"]
+    else:
+        assert not emit_lines

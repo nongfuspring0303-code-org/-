@@ -611,6 +611,16 @@ class WorkflowRunner:
             return value != 0
         return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
+    @staticmethod
+    def _coerce_list(value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, tuple):
+            return list(value)
+        return [value]
+
     def _validate_output_gate_contract(self, payload: Dict[str, Any]) -> list[str]:
         contract_signals_present = any(field in payload for field in OUTPUT_GATE_SIGNAL_FIELDS)
         if not contract_signals_present:
@@ -755,6 +765,13 @@ class WorkflowRunner:
             "final_reason": reason,
             "gate_output": gate_output or {},
             "output_gate": output_gate or {},
+            "semantic_event_type": payload.get("semantic_event_type", "unknown"),
+            "sector_candidates": self._coerce_list(payload.get("sector_candidates")),
+            "ticker_candidates": self._coerce_list(payload.get("ticker_candidates")),
+            "a1_score": payload.get("a1_score", payload.get("A1")),
+            "theme_tags": self._coerce_list(payload.get("theme_tags", payload.get("narrative_tags"))),
+            "tradeable": payload.get("tradeable"),
+            "opportunity_count": payload.get("opportunity_count"),
         }
         self._append_jsonl(self._decision_gate_log_path, record, self._evidence_lock)
 

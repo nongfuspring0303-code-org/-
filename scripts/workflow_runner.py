@@ -629,8 +629,8 @@ class WorkflowRunner:
 
         missing: list[str] = []
 
-        # If upstream explicitly emits opportunity signal, full market provenance
-        # must also be present. Otherwise output gate can be bypassed.
+        # Contract-bearing payloads that expose opportunity signal must also
+        # carry market gate fields; otherwise default bypass can happen.
         if "has_opportunity" in payload:
             if "market_data_present" not in payload:
                 missing.append("gate_contract_missing_market_data_present")
@@ -640,7 +640,6 @@ class WorkflowRunner:
 
         if "has_opportunity" not in payload:
             missing.append("gate_contract_missing_has_opportunity")
-
         market_contract_signals_present = any(
             field in payload
             for field in (
@@ -656,7 +655,7 @@ class WorkflowRunner:
             missing.append("gate_contract_missing_market_data_present")
 
         provenance_signals_present = any(field in payload for field in OUTPUT_GATE_PROVENANCE_FIELDS)
-        if provenance_signals_present:
+        if "market_data_present" in payload or provenance_signals_present:
             for field in OUTPUT_GATE_PROVENANCE_FIELDS:
                 if field not in payload:
                     missing.append(f"gate_contract_missing_{field}")
@@ -1237,6 +1236,34 @@ class WorkflowRunner:
                 output_gate=output_gate,
                 final_action="WATCH",
                 reason=result["final"]["reason"],
+            )
+            self._mark_request_processed(request_id)
+            return result
+
+        target_bucket, resolved_target = self._resolve_target(payload)
+        enforce_resolved_symbol = self._is_true(payload.get("enforce_resolved_symbol", False))
+        symbol_from_payload = str(payload.get("symbol", "")).strip()
+        resolved_symbol = symbol_from_payload or (resolved_target if target_bucket != "Sector" else "")
+        if not resolved_symbol:
+            resolved_symbol = "UNKNOWN"
+
+        if enforce_resolved_symbol and (resolved_symbol in {"UNKNOWN", "N/A", ""} or target_bucket == "Sector"):
+            result["final"] = {
+                "action": "WATCH",
+                "reason": "Blocked by output gate: missing_tradeable_symbol",
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "batch_id": batch_id,
+                "contract_version": contract_version,
+            }
+            result["action_card"] = self._build_action_card(payload, ai_factors, float(score), "WATCH")
+            self._submit_replay_log(
+                trace_id=trace_id,
+                request_id=request_id,
+                batch_id=batch_id,
+                final_action="WATCH",
+                payload=payload,
+                action_card=result["action_card"],
             )
             self._mark_request_processed(request_id)
             return result

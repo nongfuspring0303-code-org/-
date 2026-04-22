@@ -156,6 +156,97 @@ class FullWorkflowRunner:
             "market_data_fallback_used": market_data_fallback_used,
         }
 
+    @staticmethod
+    def _to_float(value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _build_market_validation_input(self, payload: Dict[str, Any], event_object: Dict[str, Any], conduction_out: Dict[str, Any]) -> Dict[str, Any]:
+        raw_price = payload.get("price_changes")
+        raw_volume = payload.get("volume_changes")
+
+        price_changes = dict(raw_price) if isinstance(raw_price, dict) else {}
+        volume_changes = dict(raw_volume) if isinstance(raw_volume, dict) else {}
+
+        derived_from_payload = False
+        if not price_changes:
+            spx_move = self._to_float(payload.get("spx_move_pct"))
+            vix_move = self._to_float(payload.get("vix_change_pct"))
+            sector_move = self._to_float(payload.get("sector_move_pct"))
+            if spx_move is not None:
+                price_changes["SPY"] = spx_move
+            if vix_move is not None:
+                price_changes["VIX_PROXY"] = vix_move
+            if sector_move is not None:
+                price_changes["SECTOR_PROXY"] = sector_move
+            derived_from_payload = bool(price_changes)
+
+        if not volume_changes:
+            spx_vol = self._to_float(payload.get("spx_volume_ratio"))
+            sector_vol = self._to_float(payload.get("sector_volume_ratio"))
+            if spx_vol is not None:
+                volume_changes["SPY"] = spx_vol
+            if sector_vol is not None:
+                volume_changes["SECTOR_PROXY"] = sector_vol
+
+        market_data_source = str(payload.get("market_data_source", "")).strip().lower()
+        if not market_data_source:
+            if isinstance(raw_price, dict) or isinstance(raw_volume, dict):
+                market_data_source = "payload_direct"
+            elif derived_from_payload:
+                market_data_source = "payload_derived"
+            else:
+                market_data_source = "missing"
+
+        market_data_stale = bool(payload.get("market_data_stale", False))
+        market_data_default_used = bool(payload.get("market_data_default_used", False))
+        market_data_fallback_used = bool(payload.get("market_data_fallback_used", False))
+
+        if market_data_source in {"default", "synthetic_default"}:
+            market_data_default_used = True
+        if market_data_source in {"fallback", "failed"}:
+            market_data_fallback_used = True
+
+        market_data_present = bool(price_changes or volume_changes)
+        if market_data_source in {"missing", "failed"} and not market_data_present:
+            market_data_present = False
+
+        cross_asset_linkage = payload.get("cross_asset_linkage")
+        if not isinstance(cross_asset_linkage, dict):
+            cross_asset_linkage = {"confirmed": False}
+        else:
+            cross_asset_linkage = {"confirmed": bool(cross_asset_linkage.get("confirmed", False))}
+
+        winner_loser_dispersion = payload.get("winner_loser_dispersion")
+        if not isinstance(winner_loser_dispersion, dict):
+            winner_loser_dispersion = {"confirmed": False}
+        else:
+            winner_loser_dispersion = {"confirmed": bool(winner_loser_dispersion.get("confirmed", False))}
+
+        persistence_minutes = self._to_float(payload.get("persistence_minutes"))
+        if persistence_minutes is None:
+            persistence_minutes = 0.0
+
+        return {
+            "event_id": event_object["event_id"],
+            "conduction_output": {"conduction_path": conduction_out.get("conduction_path", [])},
+            "price_changes": price_changes,
+            "volume_changes": volume_changes,
+            "cross_asset_linkage": cross_asset_linkage,
+            "persistence_minutes": persistence_minutes,
+            "winner_loser_dispersion": winner_loser_dispersion,
+            "market_timestamp": payload.get("market_timestamp", event_object["updated_at"]),
+            "market_data_source": market_data_source,
+            "market_data_present": market_data_present,
+            "market_data_stale": market_data_stale,
+            "market_data_default_used": market_data_default_used,
+            "market_data_fallback_used": market_data_fallback_used,
+        }
+
     def run(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         intel_out = self.intel.run(payload)
 

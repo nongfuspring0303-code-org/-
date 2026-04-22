@@ -156,3 +156,65 @@ def test_stage2_c_blocker_path_no_execution_emit_and_replay_written(tmp_path):
     assert rec["batch_id"] == "BATCH-C-S2-BLOCK-001"
     assert rec["event_hash"] == "EVHASH-C-S2-002"
     assert rec["final_action"] == out["final"]["action"]
+
+
+def test_stage2_c_replay_write_durable_before_run_return(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    runner = WorkflowRunner(
+        request_store_path=str(tmp_path / "seen_ids_c_s2_3.txt"),
+        audit_dir=str(logs_dir),
+    )
+    payload = {
+        "request_id": "REQ-C-S2-DURABLE-001",
+        "batch_id": "BATCH-C-S2-DURABLE-001",
+        "event_hash": "EVHASH-C-S2-003",
+        "A0": 40,
+        "A-1": 70,
+        "A1": 85,
+        "A1.5": 65,
+        "A0.5": 0,
+        "severity": "E3",
+        "fatigue_index": 20,
+        "event_state": "Active",
+        "correlation": 0.5,
+        "vix": 18,
+        "ted": 40,
+        "spread_pct": 0.002,
+        "account_equity": 100000,
+        "entry_price": 100.0,
+        "risk_per_share": 2.0,
+        "direction": "long",
+        "symbol": "SPY",
+        "has_opportunity": False,
+        "market_data_present": True,
+        "market_data_source": "payload_direct",
+        "market_data_stale": False,
+        "market_data_default_used": False,
+        "market_data_fallback_used": False,
+        "tradeable": True,
+    }
+
+    original_log_replay_task = runner._log_replay_task
+
+    def delayed_log_replay_task(**kwargs):
+        time.sleep(0.15)
+        return original_log_replay_task(**kwargs)
+
+    monkeypatch.setattr(runner, "_log_replay_task", delayed_log_replay_task)
+
+    started_at = time.time()
+    out = runner.run(payload)
+    elapsed = time.time() - started_at
+
+    assert out["final"]["action"] != "EXECUTE"
+    # If replay writing is fire-and-forget, this read is often empty right after run() returns.
+    replay_content = (logs_dir / "replay_write.jsonl").read_text(encoding="utf-8").strip()
+    assert replay_content != ""
+    replay_lines = [line for line in replay_content.splitlines() if line.strip()]
+    assert len(replay_lines) == 1
+    rec = json.loads(replay_lines[-1])
+    assert rec["request_id"] == "REQ-C-S2-DURABLE-001"
+    assert rec["batch_id"] == "BATCH-C-S2-DURABLE-001"
+    assert rec["event_hash"] == "EVHASH-C-S2-003"
+    assert rec["final_action"] == out["final"]["action"]
+    assert elapsed >= 0.12

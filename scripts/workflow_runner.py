@@ -12,7 +12,6 @@ import logging
 import os
 import threading
 import time
-import concurrent.futures
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
@@ -103,7 +102,6 @@ class WorkflowRunner:
             path.touch(exist_ok=True)
         self._replay_lock = threading.Lock()
         self._evidence_lock = threading.Lock()
-        self._replay_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
         self.scorer = SignalScorer()
         self.ai_adapter = AISignalAdapter(config_path=str(self.config_path))
@@ -729,8 +727,9 @@ class WorkflowRunner:
         action_card: Dict[str, Any],
     ) -> None:
         try:
-            self._replay_executor.submit(
-                self._log_replay_task,
+            # Stage2 durability guarantee:
+            # run() should only return after replay evidence has been appended.
+            self._log_replay_task(
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
@@ -739,7 +738,7 @@ class WorkflowRunner:
                 action_card=action_card,
             )
         except Exception as exc:
-            logging.warning("replay_log_submit_failed: %s", exc)
+            logging.warning("replay_log_write_failed: %s", exc)
 
     def _append_jsonl(self, path: Path, record: Dict[str, Any], lock: threading.Lock) -> None:
         line = json.dumps(record, ensure_ascii=False)

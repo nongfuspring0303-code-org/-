@@ -99,6 +99,7 @@ Required fields:
 - global trace keys
 - `final_action`
 - `action_card`
+- Durability guarantee: for every code path that writes replay evidence, `WorkflowRunner.run()` returns only after `replay_write.jsonl` append completes (no async flush race at run-return boundary).
 
 ### 3.6 execution_emit.jsonl
 
@@ -149,6 +150,7 @@ Any breaking field change requires:
 - `tests/test_member_a_stage2_gates.py::test_output_gate_blocks_execute_when_market_data_fallback_used_with_evidence`
 - `tests/test_member_a_stage2_gates.py::test_full_workflow_default_source_does_not_fake_a1_and_never_executes`
 - `tests/test_member_a_stage2_gates.py::test_full_workflow_fallback_source_does_not_fake_a1_and_never_executes`
+- `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_replay_write_durable_before_run_return`
 
 ## 7) Stage1 A sign-off criteria
 

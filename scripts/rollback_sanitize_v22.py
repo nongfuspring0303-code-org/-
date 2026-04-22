@@ -100,10 +100,10 @@ def _downgrade_metadata(meta: dict[str, Any], ts: str) -> tuple[dict[str, Any], 
 
 
 def _sanitize_db(path: Path, mode: str, db_action: str, ts: str) -> dict[str, Any]:
-    _ensure_db(path)
+    exists_before = path.exists()
     report: dict[str, Any] = {
         "path": str(path),
-        "exists": path.exists(),
+        "exists": exists_before,
         "db_action": db_action,
         "backup": None,
         "rows_before": 0,
@@ -112,6 +112,15 @@ def _sanitize_db(path: Path, mode: str, db_action: str, ts: str) -> dict[str, An
         "purged_rows": 0,
         "removed_keys_counter": {},
     }
+
+    # dry-run must be read-only: never create DB as a side effect.
+    if mode != "apply" and not exists_before:
+        return report
+
+    # apply mode can bootstrap an empty DB for deterministic sanitization.
+    if mode == "apply":
+        _ensure_db(path)
+        report["exists"] = path.exists()
 
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -196,7 +205,8 @@ def main() -> int:
     }
 
     for path in log_targets:
-        ensure_file(path)
+        if args.mode == "apply":
+            ensure_file(path)
         entry = {
             "path": str(path),
             "exists": path.exists(),

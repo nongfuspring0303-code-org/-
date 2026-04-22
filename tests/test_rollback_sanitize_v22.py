@@ -103,3 +103,39 @@ def test_rollback_sanitize_apply_downgrade_metadata(tmp_path: Path):
     assert "contract_version" not in metadata
     assert "dual_write" not in metadata
     assert metadata.get("keep_me") == "ok"
+
+
+def test_rollback_sanitize_dry_run_is_read_only(tmp_path: Path):
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--root",
+            str(project),
+            "--mode",
+            "dry-run",
+            "--db-action",
+            "downgrade_v22_metadata",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["mode"] == "dry-run"
+    assert report["db_action"] == "downgrade_v22_metadata"
+
+    # dry-run must not create files as side effects
+    assert not (project / "logs" / "rejected_events.jsonl").exists()
+    assert not (project / "logs" / "quarantine_replay.jsonl").exists()
+    assert not (project / "data" / "event_states.db").exists()
+
+    assert report["db_target"]["exists"] is False
+    for entry in report["targets"]:
+        assert entry["exists"] is False
+        assert entry["backup"] is None
+        assert entry["truncated"] is False

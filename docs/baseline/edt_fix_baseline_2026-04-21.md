@@ -33,4 +33,8 @@ Owner: Phase 0 execution owner = Member A; Member B/C review & sign-off only
 - Freeze timestamp: 2026-04-21T19:29:51Z
 - Commit SHA: a26c9b6a68a04c75f98081d507b92029541d59d7
 - Run command: `python3 scripts/freeze_stage0_baseline.py`
-- Reviewer signatures (A/B/C): pending
+- Review signatures:
+  - A formal review approve: pending
+  - B formal review approve: pending
+  - C formal review approve: pending
+- Go / No-Go record: `GO` (2026-04-22, Stage 0 content gate passed; merge gate still requires formal A/B/C approve closure)

@@ -23,3 +23,6 @@ This folder holds execution-level governance docs for the EDT phase-5 rollout.
 ## Rollback Sanitization Command
 - Dry-run: `python3 scripts/rollback_sanitize_v22.py --mode dry-run --db-action downgrade_v22_metadata`
 - Apply: `python3 scripts/rollback_sanitize_v22.py --mode apply --db-action downgrade_v22_metadata`
+
+## Go / No-Go Record
+- `stage0_go_no_go_record_2026-04-22.md`

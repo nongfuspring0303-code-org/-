@@ -99,6 +99,7 @@ Required fields:
 - global trace keys
 - `final_action`
 - `action_card`
+- Durability guarantee: for every code path that writes replay evidence, `WorkflowRunner.run()` returns only after `replay_write.jsonl` append completes (no async flush race at run-return boundary).
 
 ### 3.6 execution_emit.jsonl
 
@@ -111,9 +112,9 @@ Required fields:
 
 ## 4) OutputGate contract rules (hard gate)
 
-If any output-gate contract signal appears (`has_opportunity`, market provenance, `tradeable`), then the following rules apply:
+WorkflowRunner entrypoints must carry output-gate contract fields; no full-missing legacy payload may bypass gate checks.
 
-1. `has_opportunity` must exist.
+1. `has_opportunity` must exist for every WorkflowRunner entrypoint.
 2. If `has_opportunity` exists, the payload must also include:
    - `market_data_present`
    - `market_data_source`
@@ -144,6 +145,12 @@ Any breaking field change requires:
 - `tests/test_member_c_stage1_contract_gate.py::test_contract_gate_blocks_when_provenance_partial`
 - `tests/test_member_c_stage1_contract_gate.py::test_contract_gate_blocks_when_market_data_source_missing_with_has_opportunity`
 - `tests/test_member_c_stage1_contract_gate.py::test_contract_gate_blocks_when_has_opportunity_without_provenance_fields`
+- `tests/test_member_a_stage2_gates.py::test_output_gate_blocks_when_full_legacy_contract_signals_are_missing`
+- `tests/test_member_a_stage2_gates.py::test_output_gate_blocks_execute_when_market_data_default_used_with_evidence`
+- `tests/test_member_a_stage2_gates.py::test_output_gate_blocks_execute_when_market_data_fallback_used_with_evidence`
+- `tests/test_member_a_stage2_gates.py::test_full_workflow_default_source_does_not_fake_a1_and_never_executes`
+- `tests/test_member_a_stage2_gates.py::test_full_workflow_fallback_source_does_not_fake_a1_and_never_executes`
+- `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_replay_write_durable_before_run_return`
 
 ## 7) Stage1 A sign-off criteria
 

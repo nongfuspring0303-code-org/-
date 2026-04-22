@@ -12,7 +12,6 @@ import logging
 import os
 import threading
 import time
-import concurrent.futures
 from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
@@ -103,7 +102,6 @@ class WorkflowRunner:
             path.touch(exist_ok=True)
         self._replay_lock = threading.Lock()
         self._evidence_lock = threading.Lock()
-        self._replay_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
         self.scorer = SignalScorer()
         self.ai_adapter = AISignalAdapter(config_path=str(self.config_path))
@@ -623,23 +621,20 @@ class WorkflowRunner:
         return [value]
 
     def _validate_output_gate_contract(self, payload: Dict[str, Any]) -> list[str]:
-        contract_signals_present = any(field in payload for field in OUTPUT_GATE_SIGNAL_FIELDS)
-        if not contract_signals_present:
-            return []
-
         missing: list[str] = []
 
-        # Contract-bearing payloads that expose opportunity signal must also
-        # carry market gate fields; otherwise default bypass can happen.
-        if "has_opportunity" in payload:
+        # Stage2 policy decision (issue #77): strict gate on all WorkflowRunner
+        # entrypoints. `has_opportunity` is mandatory even for legacy callers;
+        # otherwise a full-missing payload can bypass output-gate constraints.
+        if "has_opportunity" not in payload:
+            missing.append("gate_contract_missing_has_opportunity")
+        else:
             if "market_data_present" not in payload:
                 missing.append("gate_contract_missing_market_data_present")
             for field in OUTPUT_GATE_PROVENANCE_FIELDS:
                 if field not in payload:
                     missing.append(f"gate_contract_missing_{field}")
 
-        if "has_opportunity" not in payload:
-            missing.append("gate_contract_missing_has_opportunity")
         market_contract_signals_present = any(
             field in payload
             for field in (
@@ -732,8 +727,9 @@ class WorkflowRunner:
         action_card: Dict[str, Any],
     ) -> None:
         try:
-            self._replay_executor.submit(
-                self._log_replay_task,
+            # Stage2 durability guarantee:
+            # run() should only return after replay evidence has been appended.
+            self._log_replay_task(
                 trace_id=trace_id,
                 request_id=request_id,
                 batch_id=batch_id,
@@ -742,7 +738,7 @@ class WorkflowRunner:
                 action_card=action_card,
             )
         except Exception as exc:
-            logging.warning("replay_log_submit_failed: %s", exc)
+            logging.warning("replay_log_write_failed: %s", exc)
 
     def _append_jsonl(self, path: Path, record: Dict[str, Any], lock: threading.Lock) -> None:
         line = json.dumps(record, ensure_ascii=False)

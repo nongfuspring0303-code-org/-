@@ -1,4 +1,6 @@
 import sys
+import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,6 +9,17 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from full_workflow_runner import FullWorkflowRunner
 from workflow_runner import WorkflowRunner
+
+
+def _wait_for_non_empty_jsonl(path: Path, timeout_sec: float = 2.0) -> list[dict]:
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if path.exists():
+            content = path.read_text(encoding="utf-8").strip()
+            if content:
+                return [json.loads(line) for line in content.splitlines() if line.strip()]
+        time.sleep(0.02)
+    return []
 
 
 def _strong_payload() -> dict:
@@ -95,6 +108,29 @@ def test_output_gate_blocks_when_contract_fields_are_missing(tmp_path):
 
     assert out["final"]["action"] == "BLOCK"
     assert "gate_contract_missing_market_data_present" in out["final"]["reason"]
+
+
+def test_output_gate_blocks_when_full_legacy_contract_signals_are_missing(tmp_path):
+    runner = WorkflowRunner(
+        request_store_path=str(tmp_path / "seen_ids_a2_legacy.txt"),
+        audit_dir=str(tmp_path / "logs_a2_legacy"),
+    )
+    payload = _strong_payload()
+    for field in (
+        "has_opportunity",
+        "market_data_present",
+        "market_data_source",
+        "market_data_stale",
+        "market_data_default_used",
+        "market_data_fallback_used",
+        "tradeable",
+    ):
+        payload.pop(field, None)
+
+    out = runner.run(payload)
+
+    assert out["final"]["action"] == "BLOCK"
+    assert "gate_contract_missing_has_opportunity" in out["final"]["reason"]
 
 
 def test_output_gate_blocks_when_only_has_opportunity_is_provided(tmp_path):
@@ -187,3 +223,121 @@ def test_full_workflow_derives_market_input_from_payload_fields():
 
     assert validation["market_data_source"] == "payload_derived"
     assert validation["market_data_present"] is True
+
+
+def test_output_gate_blocks_execute_when_market_data_default_used_with_evidence(tmp_path):
+    logs_dir = tmp_path / "logs_a2_default"
+    runner = WorkflowRunner(
+        request_store_path=str(tmp_path / "seen_ids_a2_default.txt"),
+        audit_dir=str(logs_dir),
+    )
+    payload = _strong_payload()
+    payload.update(
+        {
+            "request_id": "REQ-A2-DEFAULT-001",
+            "batch_id": "BATCH-A2-DEFAULT-001",
+            "event_hash": "EVHASH-A2-DEFAULT-001",
+            "has_opportunity": True,
+            "market_data_present": True,
+            "market_data_source": "default",
+            "market_data_stale": False,
+            "market_data_default_used": True,
+            "market_data_fallback_used": False,
+            "tradeable": True,
+        }
+    )
+
+    out = runner.run(payload)
+
+    assert out["final"]["action"] != "EXECUTE"
+    assert "market_data_default_used" in out["final"]["reason"]
+    emit_content = (logs_dir / "execution_emit.jsonl").read_text(encoding="utf-8").strip()
+    assert emit_content == ""
+
+    gate_records = _wait_for_non_empty_jsonl(logs_dir / "decision_gate.jsonl")
+    assert gate_records
+    assert gate_records[-1]["final_action"] == out["final"]["action"]
+    assert "market_data_default_used" in gate_records[-1]["final_reason"]
+
+    replay_records = _wait_for_non_empty_jsonl(logs_dir / "replay_write.jsonl")
+    assert replay_records
+    assert replay_records[-1]["final_action"] == out["final"]["action"]
+    assert replay_records[-1]["event_hash"] == "EVHASH-A2-DEFAULT-001"
+
+
+def test_output_gate_blocks_execute_when_market_data_fallback_used_with_evidence(tmp_path):
+    logs_dir = tmp_path / "logs_a2_fallback"
+    runner = WorkflowRunner(
+        request_store_path=str(tmp_path / "seen_ids_a2_fallback.txt"),
+        audit_dir=str(logs_dir),
+    )
+    payload = _strong_payload()
+    payload.update(
+        {
+            "request_id": "REQ-A2-FALLBACK-001",
+            "batch_id": "BATCH-A2-FALLBACK-001",
+            "event_hash": "EVHASH-A2-FALLBACK-001",
+            "has_opportunity": True,
+            "market_data_present": True,
+            "market_data_source": "fallback",
+            "market_data_stale": False,
+            "market_data_default_used": False,
+            "market_data_fallback_used": True,
+            "tradeable": True,
+        }
+    )
+
+    out = runner.run(payload)
+
+    assert out["final"]["action"] != "EXECUTE"
+    assert "market_data_fallback_used" in out["final"]["reason"]
+    emit_content = (logs_dir / "execution_emit.jsonl").read_text(encoding="utf-8").strip()
+    assert emit_content == ""
+
+    gate_records = _wait_for_non_empty_jsonl(logs_dir / "decision_gate.jsonl")
+    assert gate_records
+    assert gate_records[-1]["final_action"] == out["final"]["action"]
+    assert "market_data_fallback_used" in gate_records[-1]["final_reason"]
+
+    replay_records = _wait_for_non_empty_jsonl(logs_dir / "replay_write.jsonl")
+    assert replay_records
+    assert replay_records[-1]["final_action"] == out["final"]["action"]
+    assert replay_records[-1]["event_hash"] == "EVHASH-A2-FALLBACK-001"
+
+
+def test_full_workflow_default_source_does_not_fake_a1_and_never_executes():
+    payload = {
+        "headline": "Macro headline with default source marker only",
+        "source": "https://example.com/news-default",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "market_data_source": "default",
+        "market_data_default_used": True,
+    }
+
+    out = FullWorkflowRunner().run(payload)
+
+    validation = out["analysis"]["market_validation"]
+    assert validation["market_data_source"] == "default"
+    assert validation["market_data_default_used"] is True
+    assert validation["A1"] <= 20
+    assert validation["a1_market_validation"] == "fail"
+    assert out["execution"]["final"]["action"] != "EXECUTE"
+
+
+def test_full_workflow_fallback_source_does_not_fake_a1_and_never_executes():
+    payload = {
+        "headline": "Macro headline with fallback source marker only",
+        "source": "https://example.com/news-fallback",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "market_data_source": "fallback",
+        "market_data_fallback_used": True,
+    }
+
+    out = FullWorkflowRunner().run(payload)
+
+    validation = out["analysis"]["market_validation"]
+    assert validation["market_data_source"] == "fallback"
+    assert validation["market_data_fallback_used"] is True
+    assert validation["A1"] <= 20
+    assert validation["a1_market_validation"] == "fail"
+    assert out["execution"]["final"]["action"] != "EXECUTE"

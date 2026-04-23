@@ -3,6 +3,22 @@
 **Date**: 2026-04-23  
 **Applies to**: `main` branch and all stage-critical pull requests
 
+## Main Branch Protection Rules
+
+`main` must stay protected with these baseline controls:
+
+- No direct pushes to `main`
+- No force pushes
+- No branch deletions
+- Required status checks must pass before merge
+- Required pull request reviews must be present before merge
+- At least 1 approval is required
+- Code owner review is required for files covered by `CODEOWNERS`
+- Stale reviews are dismissed on new pushes
+- The latest push must be approved after review when the PR changes again
+- All review conversations must be resolved before merge
+- Admin bypass remains enforced unless explicitly waived for an incident
+
 ## 1. Main branch protection baseline
 
 The `main` branch must remain protected with the following baseline controls:
@@ -92,4 +108,3 @@ If a PR was merged before formal closure, the following are required:
 See:
 
 - `docs/review/PR86_post_merge_process_incident.md`
-

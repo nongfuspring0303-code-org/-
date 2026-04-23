@@ -49,6 +49,14 @@ def _day_bucket(record: Dict[str, Any]) -> str:
     return ts.strftime("%Y-%m-%d")
 
 
+def _hourly_counts(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    out: Dict[str, int] = defaultdict(int)
+    for row in rows:
+        if row.get("logged_at"):
+            out[_hour_bucket(row)] += 1
+    return out
+
+
 def build_provider_health_hourly(market_records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in market_records:
@@ -134,6 +142,9 @@ def build_system_health_daily(
         day_rejected = [r for r in rejected_rows if r.get("logged_at", "").startswith(day)]
         day_quarantine = [r for r in quarantine_rows if r.get("logged_at", "").startswith(day)]
         day_score = [r for r in trace_scorecard_rows if r.get("logged_at", "").startswith(day)]
+        day_rejected_hourly = _hourly_counts(day_rejected)
+        day_quarantine_hourly = _hourly_counts(day_quarantine)
+        day_ingest_hourly = _hourly_counts(day_raw)
 
         ingest_count = len(day_raw)
         rejected_count = len(day_rejected)
@@ -146,7 +157,12 @@ def build_system_health_daily(
             if day_score
             else 0.0
         )
-        quarantine_silent_alert = bool(gate_enabled and ingest_count > 0 and rejected_count == 0 and quarantine_count == 0)
+        alert_hours = []
+        if gate_enabled:
+            for hour_bucket, ingest_hour_count in sorted(day_ingest_hourly.items()):
+                if ingest_hour_count > 0 and day_rejected_hourly.get(hour_bucket, 0) == 0 and day_quarantine_hourly.get(hour_bucket, 0) == 0:
+                    alert_hours.append(hour_bucket)
+        quarantine_silent_alert = bool(alert_hours)
 
         status = "healthy"
         if stage_coverage_rate < 1.0 or avg_trace_score < 70:
@@ -167,9 +183,8 @@ def build_system_health_daily(
                 "avg_trace_score": round(avg_trace_score, 2),
                 "quarantine_activity_monitor": {
                     "gate_enabled": gate_enabled,
-                    "ingest_count_1h_proxy": ingest_count,
-                    "rejected_events_count_1h_proxy": rejected_count,
-                    "quarantine_replay_count_1h_proxy": quarantine_count,
+                    "hours_checked": len(day_ingest_hourly),
+                    "alert_hours_utc": alert_hours,
                     "alert": "QUARANTINE_SILENT_ALERT" if quarantine_silent_alert else "",
                 },
                 "health_status": status,
@@ -246,7 +261,12 @@ def evaluate_logs(logs_dir: Path, gate_enabled: bool = True) -> Dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate Stage5 logs and generate provider/system health snapshots.")
     parser.add_argument("--logs-dir", type=Path, default=Path("logs"))
-    parser.add_argument("--gate-enabled", action="store_true", default=True)
+    parser.add_argument(
+        "--gate-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable or disable gate-aware quarantine-silent alert evaluation.",
+    )
     parser.add_argument("--provider-out", type=Path, default=None)
     parser.add_argument("--system-out", type=Path, default=None)
     parser.add_argument("--report-out", type=Path, default=None)

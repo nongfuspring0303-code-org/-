@@ -73,6 +73,13 @@ def test_stage5_pipeline_stage_and_scorecard_written(tmp_path):
     assert "B_output_quality" in latest["owner_dimensions"]
     assert "C_provider_freshness" in latest["owner_dimensions"]
 
+    provider_daily = logs_dir / "provider_health_hourly.json"
+    system_daily = logs_dir / "system_health_daily.json"
+    report_daily = logs_dir / "system_health_daily_report.md"
+    assert provider_daily.exists()
+    assert system_daily.exists()
+    assert report_daily.exists()
+
 
 def test_stage5_rejected_and_quarantine_written_for_non_execute(tmp_path):
     logs_dir = tmp_path / "logs"
@@ -109,4 +116,8 @@ def test_stage5_rejected_and_quarantine_written_for_non_execute(tmp_path):
     assert rej["stage"] == "execution"
     assert rej["reject_reason_code"]
     assert "final_action" in rej
-    assert q["quarantine_reason_code"]
+    assert q["stage"] == "execution"
+    assert q["reject_reason_code"]
+    assert q["reject_reason_text"]
+    assert q["ingest_ts"]
+    assert q["decision_ts"]

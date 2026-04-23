@@ -210,6 +210,28 @@ class FullWorkflowRunner:
             },
         }
 
+    def _refresh_stage5_daily_outputs(self) -> None:
+        """Auto-refresh Stage5 daily artifacts after each run."""
+        try:
+            from system_log_evaluator import evaluate_logs
+
+            evaluated = evaluate_logs(logs_dir=self.logs_dir, gate_enabled=True)
+            (self.logs_dir / "provider_health_hourly.json").write_text(
+                json.dumps(evaluated["provider_health_hourly"], ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            (self.logs_dir / "system_health_daily.json").write_text(
+                json.dumps(evaluated["system_health_daily"], ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            (self.logs_dir / "system_health_daily_report.md").write_text(
+                str(evaluated["daily_report_markdown"]),
+                encoding="utf-8",
+            )
+        except Exception:
+            # Keep trading pipeline non-blocking if observability artifact refresh fails.
+            return
+
     @staticmethod
     def _event_hash(headline: str, ts: str) -> str:
         raw = f"{headline}|{ts}"
@@ -816,9 +838,12 @@ class FullWorkflowRunner:
                 "batch_id": batch_id,
                 "event_id": event_id,
                 "event_hash": event_hash,
+                "stage": "execution",
+                "reject_reason_code": reject_reason_code,
+                "reject_reason_text": final_reason,
+                "ingest_ts": event_object.get("detected_at"),
+                "decision_ts": self._utc_now(),
                 "final_action": final_action,
-                "quarantine_reason_code": reject_reason_code,
-                "quarantine_reason_text": final_reason,
                 "contract_version": execution_in.get("contract_version", "v2.2"),
             }
             self._append_jsonl(self.quarantine_replay_log_path, quarantine_record)
@@ -843,6 +868,7 @@ class FullWorkflowRunner:
                 "category": event_object["category"],
             },
         })
+        self._refresh_stage5_daily_outputs()
 
         return {"intel": intel_out, "analysis": analysis_out, "execution": execution_out}
 

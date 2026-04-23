@@ -99,3 +99,47 @@ def test_system_log_evaluator_generates_provider_and_daily_health(tmp_path):
     assert daily["date_utc"] == "2026-04-24"
     assert daily["ingest_count"] == 2
     assert daily["quarantine_activity_monitor"]["alert"] == ""
+    assert daily["quarantine_activity_monitor"]["hours_checked"] >= 1
+    assert isinstance(daily["quarantine_activity_monitor"]["alert_hours_utc"], list)
+
+
+def test_system_log_evaluator_quarantine_silent_alert_on_hourly_window(tmp_path):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_jsonl(
+        logs_dir / "raw_news_ingest.jsonl",
+        [
+            {"logged_at": "2026-04-24T01:05:00Z", "trace_id": "T1"},
+            {"logged_at": "2026-04-24T02:05:00Z", "trace_id": "T2"},
+        ],
+    )
+    _write_jsonl(
+        logs_dir / "market_data_provenance.jsonl",
+        [
+            {
+                "logged_at": "2026-04-24T01:06:00Z",
+                "market_data_source": "payload_direct",
+                "market_data_present": True,
+                "market_data_stale": False,
+                "market_data_default_used": False,
+                "market_data_fallback_used": False,
+            }
+        ],
+    )
+    _write_jsonl(logs_dir / "pipeline_stage.jsonl", [])
+    _write_jsonl(logs_dir / "decision_gate.jsonl", [{"logged_at": "2026-04-24T02:06:00Z", "final_action": "WATCH"}])
+    _write_jsonl(
+        logs_dir / "rejected_events.jsonl",
+        [{"logged_at": "2026-04-24T02:07:00Z", "trace_id": "T2", "reject_reason_code": "EXECUTION_GATE_REJECTED"}],
+    )
+    _write_jsonl(
+        logs_dir / "quarantine_replay.jsonl",
+        [{"logged_at": "2026-04-24T02:08:00Z", "trace_id": "T2", "reject_reason_code": "EXECUTION_GATE_REJECTED"}],
+    )
+    _write_jsonl(logs_dir / "trace_scorecard.jsonl", [])
+
+    out = evaluate_logs(logs_dir=logs_dir, gate_enabled=True)
+    daily = out["system_health_daily"][0]
+    assert daily["quarantine_activity_monitor"]["alert"] == "QUARANTINE_SILENT_ALERT"
+    assert "2026-04-24T01:00:00Z" in daily["quarantine_activity_monitor"]["alert_hours_utc"]

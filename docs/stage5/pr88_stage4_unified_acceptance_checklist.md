@@ -43,10 +43,10 @@
 
 ## 3. A 侧（兼容与契约签字）
 ### 3.1 必核项
-- [ ] dual-write backward compatibility
-- [ ] queue/order/idempotency 契约边界
-- [ ] 不破坏状态机/Gate 语义
-- [ ] provider 字段与 reject_reason_code/final_reason 契约稳定性
+- [x] dual-write backward compatibility
+- [x] queue/order/idempotency 契约边界
+- [x] 不破坏状态机/Gate 语义
+- [x] provider 字段与 reject_reason_code/final_reason 契约稳定性
 
 ### 3.2 交付模板
 - 审核结论：PASS / PASS WITH NOTE / FAIL
@@ -59,7 +59,7 @@
 - [x] 不破坏状态机/Gate 语义
 - [x] provider 字段与 reject_reason_code/final_reason 契约稳定性
 - 结论：**PASS WITH NOTE**
-- 问题ID：无新增 BLOCKER（延续关注项为 C 侧压测对比与三方 formal review 闭环）
+- 问题ID：无新增 BLOCKER（延续关注项为三方 formal review 闭环）
 - 证据文档：`docs/stage5/member_a_stage4_contract_gate_signoff.md`
 
 ## 4. B 侧（消费验证签字）
@@ -109,7 +109,10 @@
 
 ## 7. 最终结论（联审签字）
 - C 结论：PASS（2026-04-24，见 2.3 与 C-side sign-off 评论）
-- A 结论：PASS / PASS WITH NOTE / FAIL
-- B 结论：PASS
+- A 结论：PASS WITH NOTE（2026-04-24，见 3.3）
+- B 结论：PASS（2026-04-24，见 `docs/stage5/member_b_stage4_consumption_validation.md` 第7节）
+
+流程门禁备注：
+- 当前内容签字已闭环；合并前仍需 A/B/C 提交正式 GitHub review approvals（非普通评论）。
 
 合并条件：A/B/C 三方至少 PASS WITH NOTE，且无 BLOCKER。

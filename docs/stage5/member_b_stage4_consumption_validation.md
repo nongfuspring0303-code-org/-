@@ -75,3 +75,42 @@ Out-of-scope implementation ownership:
 > PR: #<number>  
 > Evidence: fixture cases + validation test output + risk notes
 
+## 6) Runtime metric caliber (measured on stable Stage4 implementation)
+
+Measurement basis:
+
+- Fixture: `tests/fixtures/edt_goldens/member_b_stage4_consumption_cases.json`
+- Runtime validator: `tests/test_member_b_stage4_consumption_validation.py::test_stage4_b_runtime_metrics_snapshot`
+- Sample size: 6 executable cases (`B-S4-001` ~ `B-S4-006`)
+- Measurement date: 2026-04-24
+
+### 6.1 Definitions
+
+- Null rate:
+  - denominator = `sample_size * 4` fields (`sector_candidates`, `ticker_candidates`, `a1_score`, `theme_tags`)
+  - numerator = null/empty field observations
+- Fallback/default ratios:
+  - denominator = `sample_size`
+  - numerator = records with `market_data_fallback_used` / `market_data_default_used` evidence
+  - evidence source = gate fields when present; otherwise gate `final_reason` tokens
+- Manual review ratio:
+  - denominator = `sample_size`
+  - numerator = final action in `WATCH` / `PENDING_CONFIRM` / `BLOCK`
+- Quality degradation threshold:
+  - `null_rate <= 1%`
+  - `placeholder_leakage_ratio <= 1%`
+
+### 6.2 Measured results
+
+- `null_rate = 0.00%` (0 / 24)
+- `fallback_used_ratio = 33.33%` (2 / 6)
+- `default_used_ratio = 0.00%` (0 / 6)
+- `manual_review_ratio = 33.33%` (2 / 6)
+- `placeholder_leakage_ratio = 0.00%` (0 / 6)
+
+### 6.3 Measured conclusion
+
+- Field availability/type stability: PASS
+- Fallback/default observability: PASS (fallback paths preserved and reviewable)
+- Manual-review path visibility: PASS
+- Quality degradation threshold: PASS (`null_rate` and `placeholder_leakage_ratio` both within <=1%)

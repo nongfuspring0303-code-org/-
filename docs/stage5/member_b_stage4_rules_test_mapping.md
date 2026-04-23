@@ -25,6 +25,7 @@
 - Rule statement: batch/cache/failover/queue optimization must not significantly degrade consumer-side quality.
 - Test anchor:
   - `tests/test_member_b_stage4_consumption_validation.py::test_stage4_b_quality_guardrails`
+  - `tests/test_member_b_stage4_consumption_validation.py::test_stage4_b_runtime_metrics_snapshot`
   - `tests/test_member_c_stage4_provider_perf.py::test_priority_queue_order_semantics_test`
   - `tests/test_member_c_stage4_provider_perf.py::test_idempotent_replay_write_test`
 
@@ -47,4 +48,3 @@
 - consumer field presence/type checks
 - fallback/default/review observability checks
 - consumption quality non-regression checks
-

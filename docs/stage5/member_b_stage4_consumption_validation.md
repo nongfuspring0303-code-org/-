@@ -114,3 +114,22 @@ Measurement basis:
 - Fallback/default observability: PASS (fallback paths preserved and reviewable)
 - Manual-review path visibility: PASS
 - Quality degradation threshold: PASS (`null_rate` and `placeholder_leakage_ratio` both within <=1%)
+
+## 7) Formal B-side sign-off (PR88)
+
+- B-side sign-off: PASS
+- Date: 2026-04-24
+- PR: #88
+- Evidence:
+  - fixture cases: `tests/fixtures/edt_goldens/member_b_stage4_consumption_cases.json` (`B-S4-001` ~ `B-S4-007`)
+  - validation test output: `tests/test_member_b_stage4_consumption_validation.py` and Stage4 companion coverage in `tests/test_member_c_stage4_provider_perf.py`
+  - runtime metric results:
+    - `null_rate = 0.00%`
+    - `fallback_used_ratio = 33.33%`
+    - `default_used_ratio = 0.00%`
+    - `manual_review_ratio = 33.33%`
+    - `placeholder_leakage_ratio = 0.00%`
+- Risk notes:
+  - Provider optimization did not break `sector_candidates` / `ticker_candidates` / `A1(a1_score)` / `theme_tags` consumer readability or semantics on B fixture coverage.
+  - fallback/default/manual-review paths remain interpretable and auditable (`WATCH` reasons preserved, fallback blockers explicit).
+  - No observed output-quality degradation on B acceptance metrics (`null_rate` and placeholder leakage both within <=1% threshold).

@@ -126,6 +126,7 @@ class ConductionMapper(EDTModule):
 
     @staticmethod
     def _resolve_sector_snapshot_name(item: Dict[str, Any]) -> str:
+        # Prefer the canonical sector field from live snapshots; fall back to the localized label.
         sector = str(item.get("sector", "") or "").strip()
         if sector:
             return sector

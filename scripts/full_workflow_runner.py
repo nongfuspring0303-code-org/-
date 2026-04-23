@@ -115,6 +115,176 @@ class FullWorkflowRunner:
             return "C"
         return "D"
 
+    def _load_sector_whitelist(self) -> set[str]:
+        cache = getattr(self, "_sector_whitelist_cache", None)
+        if isinstance(cache, set):
+            return cache
+
+        whitelist: set[str] = set()
+        cfg = ROOT / "configs" / "sector_impact_mapping.yaml"
+        if cfg.exists():
+            in_mapping = False
+            for raw_line in cfg.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("mapping:"):
+                    in_mapping = True
+                    continue
+                if line.startswith("mappings:"):
+                    in_mapping = False
+                    continue
+                if line.startswith("sector:"):
+                    value = line.split(":", 1)[1].strip().strip('"').strip("'")
+                    if value:
+                        whitelist.add(value)
+                    continue
+                if in_mapping and line.startswith("-"):
+                    value = line.lstrip("-").strip().strip('"').strip("'")
+                    if value:
+                        whitelist.add(value)
+
+        self._sector_whitelist_cache = whitelist
+        return whitelist
+
+    @staticmethod
+    def _count_placeholders(values: List[Any]) -> tuple[int, int]:
+        placeholder_tokens = {"", "unknown", "n/a", "na", "none", "null", "placeholder", "tbd"}
+        total = 0
+        placeholders = 0
+        for value in values:
+            text = str(value).strip().lower()
+            if not text:
+                continue
+            total += 1
+            if text in placeholder_tokens:
+                placeholders += 1
+        return placeholders, total
+
+    def _build_b_side_scores(
+        self,
+        *,
+        trace_id: str,
+        event_hash: str,
+        final_action: str,
+        final_reason: str,
+        sector_candidates: List[Any],
+        ticker_candidates: List[Any],
+        theme_tags: List[Any],
+        sectors: List[Dict[str, Any]],
+        sector_impacts: List[Dict[str, Any]],
+        stock_candidates: List[Dict[str, Any]],
+        mapping_source: str,
+        needs_manual_review: bool,
+        tradeable: Any,
+        opportunity_count: Any,
+    ) -> Dict[str, Any]:
+        whitelist = self._load_sector_whitelist()
+        sectors_values = [str(item.get("name", "")).strip() for item in sectors if isinstance(item, dict)]
+        non_whitelist_sector_count = (
+            sum(1 for name in sectors_values if name and name not in whitelist) if whitelist else 0
+        )
+
+        stock_symbol_pool = {
+            str(item.get("symbol", "")).strip().upper()
+            for item in stock_candidates
+            if isinstance(item, dict) and str(item.get("symbol", "")).strip()
+        }
+        ticker_norm = [str(x).strip().upper() for x in ticker_candidates if str(x).strip()]
+        ticker_truth_source_hit = sum(1 for symbol in ticker_norm if symbol in stock_symbol_pool)
+        ticker_truth_source_miss = sum(1 for symbol in ticker_norm if symbol not in stock_symbol_pool)
+
+        placeholder_count, placeholder_total = self._count_placeholders(
+            list(sector_candidates) + list(ticker_candidates) + list(theme_tags) + [final_reason]
+        )
+        placeholder_leakage_rate = (
+            float(placeholder_count) / float(placeholder_total) if placeholder_total > 0 else 0.0
+        )
+
+        sector_hard_fail = non_whitelist_sector_count > 0 or not sectors_values
+        ticker_hard_fail = ticker_truth_source_miss > 0 or not ticker_norm
+        output_hard_fail = placeholder_leakage_rate > 0.01
+
+        sector_quality_score = 100.0
+        if sector_hard_fail:
+            sector_quality_score = 0.0
+        else:
+            if not sector_impacts:
+                sector_quality_score -= 40.0
+            if not mapping_source:
+                sector_quality_score -= 20.0
+            sector_quality_score = max(0.0, min(100.0, sector_quality_score))
+
+        ticker_quality_score = 100.0
+        if ticker_hard_fail:
+            ticker_quality_score = 0.0
+        else:
+            if not stock_candidates:
+                ticker_quality_score -= 40.0
+            if ticker_truth_source_hit == 0:
+                ticker_quality_score -= 60.0
+            ticker_quality_score = max(0.0, min(100.0, ticker_quality_score))
+
+        output_quality_score = 100.0
+        if output_hard_fail:
+            output_quality_score = 0.0
+        else:
+            if needs_manual_review:
+                output_quality_score -= 15.0
+            if not final_action:
+                output_quality_score -= 40.0
+            if not final_reason:
+                output_quality_score -= 40.0
+            if not theme_tags:
+                output_quality_score -= 20.0
+            output_quality_score = max(0.0, min(100.0, output_quality_score))
+
+        mapping_acceptance_score = 100.0
+        if sector_hard_fail or ticker_hard_fail or output_hard_fail:
+            mapping_acceptance_score = 0.0
+        else:
+            if not trace_id:
+                mapping_acceptance_score -= 40.0
+            if not event_hash:
+                mapping_acceptance_score -= 40.0
+            if opportunity_count is None:
+                mapping_acceptance_score -= 20.0
+            if tradeable is None:
+                mapping_acceptance_score -= 20.0
+            mapping_acceptance_score = max(0.0, min(100.0, mapping_acceptance_score))
+
+        b_overall_score = min(
+            sector_quality_score,
+            ticker_quality_score,
+            output_quality_score,
+            mapping_acceptance_score,
+        )
+        b_signoff_ready = bool(
+            sector_quality_score >= 80.0
+            and ticker_quality_score >= 80.0
+            and output_quality_score >= 80.0
+            and mapping_acceptance_score >= 80.0
+            and b_overall_score >= 80.0
+            and not (sector_hard_fail or ticker_hard_fail or output_hard_fail)
+        )
+
+        return {
+            "mapping_source": mapping_source,
+            "needs_manual_review": needs_manual_review,
+            "placeholder_count": placeholder_count,
+            "placeholder_total": placeholder_total,
+            "placeholder_leakage_rate": round(placeholder_leakage_rate, 4),
+            "non_whitelist_sector_count": non_whitelist_sector_count,
+            "ticker_truth_source_hit": ticker_truth_source_hit,
+            "ticker_truth_source_miss": ticker_truth_source_miss,
+            "sector_quality_score": round(sector_quality_score, 2),
+            "ticker_quality_score": round(ticker_quality_score, 2),
+            "output_quality_score": round(output_quality_score, 2),
+            "mapping_acceptance_score": round(mapping_acceptance_score, 2),
+            "b_overall_score": round(b_overall_score, 2),
+            "b_signoff_ready": b_signoff_ready,
+        }
+
     def _build_trace_scorecard(
         self,
         *,
@@ -125,16 +295,26 @@ class FullWorkflowRunner:
         event_hash: str,
         execution_in: Dict[str, Any],
         execution_out: Dict[str, Any],
+        conduction_out: Dict[str, Any],
+        sectors: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         final = execution_out.get("final", {}) if isinstance(execution_out, dict) else {}
         final_action = str(final.get("action", "UNKNOWN")).upper()
+        final_reason = str(final.get("reason", ""))
         stale = bool(execution_in.get("market_data_stale", False))
         default_used = bool(execution_in.get("market_data_default_used", False))
         fallback_used = bool(execution_in.get("market_data_fallback_used", False))
         has_opportunity = bool(execution_in.get("has_opportunity", False))
         semantic_event_type = str(execution_in.get("semantic_event_type", "unknown"))
-        sector_candidates = execution_in.get("sector_candidates", [])
-        ticker_candidates = execution_in.get("ticker_candidates", [])
+        sector_candidates = execution_in.get("sector_candidates", []) if isinstance(execution_in.get("sector_candidates", []), list) else []
+        ticker_candidates = execution_in.get("ticker_candidates", []) if isinstance(execution_in.get("ticker_candidates", []), list) else []
+        theme_tags = execution_in.get("theme_tags", []) if isinstance(execution_in.get("theme_tags", []), list) else []
+        tradeable = execution_in.get("tradeable")
+        opportunity_count = execution_in.get("opportunity_count")
+        sector_impacts = conduction_out.get("sector_impacts", []) if isinstance(conduction_out, dict) else []
+        stock_candidates = conduction_out.get("stock_candidates", []) if isinstance(conduction_out, dict) else []
+        mapping_source = str(conduction_out.get("mapping_source", "")).strip() if isinstance(conduction_out, dict) else ""
+        needs_manual_review = bool(conduction_out.get("needs_manual_review", False)) if isinstance(conduction_out, dict) else False
 
         gate_safety_score = 100.0
         if stale:
@@ -184,6 +364,22 @@ class FullWorkflowRunner:
             + 0.15 * audit_completeness_score
         )
         total_score = round(max(0.0, min(100.0, total_score)), 2)
+        b_scores = self._build_b_side_scores(
+            trace_id=trace_id,
+            event_hash=event_hash,
+            final_action=final_action,
+            final_reason=final_reason,
+            sector_candidates=sector_candidates,
+            ticker_candidates=ticker_candidates,
+            theme_tags=theme_tags,
+            sectors=sectors,
+            sector_impacts=sector_impacts,
+            stock_candidates=stock_candidates,
+            mapping_source=mapping_source,
+            needs_manual_review=needs_manual_review,
+            tradeable=tradeable,
+            opportunity_count=opportunity_count,
+        )
 
         return {
             "logged_at": self._utc_now(),
@@ -194,6 +390,16 @@ class FullWorkflowRunner:
             "event_id": event_id,
             "event_hash": event_hash,
             "final_action": final_action,
+            "final_reason": final_reason,
+            "semantic_event_type": semantic_event_type,
+            "sector_candidates": sector_candidates,
+            "ticker_candidates": ticker_candidates,
+            "theme_tags": theme_tags,
+            "tradeable": tradeable,
+            "opportunity_count": opportunity_count,
+            "sectors": sectors,
+            "sector_impacts": sector_impacts,
+            "stock_candidates": stock_candidates,
             "scores": {
                 "gate_safety_score": round(gate_safety_score, 2),
                 "output_quality_score": round(output_quality_score, 2),
@@ -207,6 +413,22 @@ class FullWorkflowRunner:
                 "B_output_quality": round(output_quality_score, 2),
                 "C_provider_freshness": round(provider_freshness_score, 2),
                 "C_audit_completeness": round(audit_completeness_score, 2),
+            },
+            "mapping_source": b_scores["mapping_source"],
+            "needs_manual_review": b_scores["needs_manual_review"],
+            "placeholder_count": b_scores["placeholder_count"],
+            "non_whitelist_sector_count": b_scores["non_whitelist_sector_count"],
+            "ticker_truth_source_hit": b_scores["ticker_truth_source_hit"],
+            "ticker_truth_source_miss": b_scores["ticker_truth_source_miss"],
+            "sector_quality_score": b_scores["sector_quality_score"],
+            "ticker_quality_score": b_scores["ticker_quality_score"],
+            "output_quality_score": b_scores["output_quality_score"],
+            "mapping_acceptance_score": b_scores["mapping_acceptance_score"],
+            "b_overall_score": b_scores["b_overall_score"],
+            "b_signoff_ready": b_scores["b_signoff_ready"],
+            "b_quality_details": {
+                "placeholder_total": b_scores["placeholder_total"],
+                "placeholder_leakage_rate": b_scores["placeholder_leakage_rate"],
             },
         }
 
@@ -236,97 +458,6 @@ class FullWorkflowRunner:
     def _event_hash(headline: str, ts: str) -> str:
         raw = f"{headline}|{ts}"
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16].upper()
-
-    @staticmethod
-    def _to_float(value: Any) -> float | None:
-        try:
-            if value is None:
-                return None
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _build_market_validation_input(self, payload: Dict[str, Any], event_object: Dict[str, Any], conduction_out: Dict[str, Any]) -> Dict[str, Any]:
-        raw_price = payload.get("price_changes")
-        raw_volume = payload.get("volume_changes")
-
-        price_changes = dict(raw_price) if isinstance(raw_price, dict) else {}
-        volume_changes = dict(raw_volume) if isinstance(raw_volume, dict) else {}
-
-        derived_from_payload = False
-        if not price_changes:
-            spx_move = self._to_float(payload.get("spx_move_pct"))
-            vix_move = self._to_float(payload.get("vix_change_pct"))
-            sector_move = self._to_float(payload.get("sector_move_pct"))
-            if spx_move is not None:
-                price_changes["SPY"] = spx_move
-            if vix_move is not None:
-                price_changes["VIX_PROXY"] = vix_move
-            if sector_move is not None:
-                price_changes["SECTOR_PROXY"] = sector_move
-            derived_from_payload = bool(price_changes)
-
-        if not volume_changes:
-            spx_vol = self._to_float(payload.get("spx_volume_ratio"))
-            sector_vol = self._to_float(payload.get("sector_volume_ratio"))
-            if spx_vol is not None:
-                volume_changes["SPY"] = spx_vol
-            if sector_vol is not None:
-                volume_changes["SECTOR_PROXY"] = sector_vol
-
-        market_data_source = str(payload.get("market_data_source", "")).strip().lower()
-        if not market_data_source:
-            if isinstance(raw_price, dict) or isinstance(raw_volume, dict):
-                market_data_source = "payload_direct"
-            elif derived_from_payload:
-                market_data_source = "payload_derived"
-            else:
-                market_data_source = "missing"
-
-        market_data_stale = bool(payload.get("market_data_stale", False))
-        market_data_default_used = bool(payload.get("market_data_default_used", False))
-        market_data_fallback_used = bool(payload.get("market_data_fallback_used", False))
-
-        if market_data_source in {"default", "synthetic_default"}:
-            market_data_default_used = True
-        if market_data_source in {"fallback", "failed"}:
-            market_data_fallback_used = True
-
-        market_data_present = bool(price_changes or volume_changes)
-        if market_data_source in {"missing", "failed"} and not market_data_present:
-            market_data_present = False
-
-        cross_asset_linkage = payload.get("cross_asset_linkage")
-        if not isinstance(cross_asset_linkage, dict):
-            cross_asset_linkage = {"confirmed": False}
-        else:
-            cross_asset_linkage = {"confirmed": bool(cross_asset_linkage.get("confirmed", False))}
-
-        winner_loser_dispersion = payload.get("winner_loser_dispersion")
-        if not isinstance(winner_loser_dispersion, dict):
-            winner_loser_dispersion = {"confirmed": False}
-        else:
-            winner_loser_dispersion = {"confirmed": bool(winner_loser_dispersion.get("confirmed", False))}
-
-        persistence_minutes = self._to_float(payload.get("persistence_minutes"))
-        if persistence_minutes is None:
-            persistence_minutes = 0.0
-
-        return {
-            "event_id": event_object["event_id"],
-            "conduction_output": {"conduction_path": conduction_out.get("conduction_path", [])},
-            "price_changes": price_changes,
-            "volume_changes": volume_changes,
-            "cross_asset_linkage": cross_asset_linkage,
-            "persistence_minutes": persistence_minutes,
-            "winner_loser_dispersion": winner_loser_dispersion,
-            "market_timestamp": payload.get("market_timestamp", event_object["updated_at"]),
-            "market_data_source": market_data_source,
-            "market_data_present": market_data_present,
-            "market_data_stale": market_data_stale,
-            "market_data_default_used": market_data_default_used,
-            "market_data_fallback_used": market_data_fallback_used,
-        }
 
     @staticmethod
     def _to_float(value: Any) -> float | None:
@@ -856,6 +987,8 @@ class FullWorkflowRunner:
             event_hash=event_hash,
             execution_in=execution_in,
             execution_out=execution_out,
+            conduction_out=conduction_out,
+            sectors=sectors,
         )
         self._append_jsonl(self.trace_scorecard_log_path, trace_scorecard)
 

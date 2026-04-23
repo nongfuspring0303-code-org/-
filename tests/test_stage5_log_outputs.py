@@ -72,6 +72,19 @@ def test_stage5_pipeline_stage_and_scorecard_written(tmp_path):
     assert "A_gate_safety" in latest["owner_dimensions"]
     assert "B_output_quality" in latest["owner_dimensions"]
     assert "C_provider_freshness" in latest["owner_dimensions"]
+    assert "final_reason" in latest
+    assert isinstance(latest["theme_tags"], list)
+    assert "mapping_source" in latest
+    assert "placeholder_count" in latest
+    assert "non_whitelist_sector_count" in latest
+    assert "ticker_truth_source_hit" in latest
+    assert "ticker_truth_source_miss" in latest
+    assert "sector_quality_score" in latest
+    assert "ticker_quality_score" in latest
+    assert "output_quality_score" in latest
+    assert "mapping_acceptance_score" in latest
+    assert "b_overall_score" in latest
+    assert isinstance(latest["b_signoff_ready"], bool)
 
     provider_daily = logs_dir / "provider_health_hourly.json"
     system_daily = logs_dir / "system_health_daily.json"

@@ -64,3 +64,66 @@ def test_market_data_adapter_batch_cache_and_failover():
     assert out3 == out1
     assert calls["primary"] == 2
     assert calls["fallback"] == 2
+
+
+def test_market_data_adapter_respects_empty_provider_chain_without_network_side_effects():
+    # Test ID: T-S4-EMPTY-CHAIN -> Rule ID: R-S4-CONFIG-ALIGN
+    calls = {"primary": 0, "fallback": 0}
+
+    def primary_provider(symbols):
+        calls["primary"] += 1
+        return {"AAPL": 1.0}
+
+    def fallback_provider(symbols):
+        calls["fallback"] += 1
+        return {"AAPL": 1.0}
+
+    cfg = {
+        "runtime.price_fetch.providers.active": [],
+        "runtime.price_fetch.providers.fallback": [],
+        "runtime.price_fetch.providers.deprecated": [],
+    }
+    adapter = MarketDataAdapter(
+        config_getter=lambda k, d=None: cfg.get(k, d),
+        providers={"primary": primary_provider, "fallback": fallback_provider},
+    )
+
+    out = adapter.quote_many(["AAPL"])
+    assert out == {}
+    assert adapter.last_meta.provider_chain == []
+    assert adapter.last_meta.attempted == []
+    assert adapter.last_meta.succeeded == []
+    assert adapter.last_meta.unresolved_symbols == ["AAPL"]
+    assert calls["primary"] == 0
+    assert calls["fallback"] == 0
+
+
+def test_market_data_adapter_does_not_implicitly_fallback_when_deprecated_clears_chain():
+    # Test ID: T-S4-DEPRECATED-CLEAR -> Rule ID: R-S4-CONFIG-ALIGN
+    calls = {"yahoo": 0, "stooq": 0}
+
+    def yahoo_provider(symbols):
+        calls["yahoo"] += 1
+        return {"AAPL": 1.0}
+
+    def stooq_provider(symbols):
+        calls["stooq"] += 1
+        return {"AAPL": 1.0}
+
+    cfg = {
+        "runtime.price_fetch.providers.active": ["yahoo"],
+        "runtime.price_fetch.providers.fallback": ["stooq"],
+        "runtime.price_fetch.providers.deprecated": ["yahoo", "stooq"],
+    }
+    adapter = MarketDataAdapter(
+        config_getter=lambda k, d=None: cfg.get(k, d),
+        providers={"yahoo": yahoo_provider, "stooq": stooq_provider},
+    )
+
+    out = adapter.quote_many(["AAPL"])
+    assert out == {}
+    assert adapter.last_meta.provider_chain == []
+    assert adapter.last_meta.attempted == []
+    assert adapter.last_meta.unresolved_symbols == ["AAPL"]
+    assert calls["yahoo"] == 0
+    assert calls["stooq"] == 0

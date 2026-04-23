@@ -47,7 +47,9 @@ class MarketDataAdapter:
         deprecated = set(self._coerce_str_list(self._get("runtime.price_fetch.providers.deprecated", [])))
 
         chain = [p for p in active + fallback if p not in deprecated]
-        self.provider_chain = chain or ["yahoo"]
+        # No implicit provider fallback when config explicitly clears the chain.
+        # This preserves config-runtime alignment for disable/deprecated scenarios.
+        self.provider_chain = chain
 
         self.providers = {
             "yahoo": self._fetch_yahoo,

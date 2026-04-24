@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from check_shadow_code_purge_gate import evaluate_purge_gate
+from check_shadow_code_purge_gate import default_targets, evaluate_purge_gate
 
 
 def test_shadow_code_purge_gate_detects_non_allowlisted_print(tmp_path):
@@ -32,3 +32,12 @@ def test_shadow_code_purge_gate_respects_allowlist(tmp_path):
     report = evaluate_purge_gate(targets=[target], allowlist_path=allowlist)
     assert report["passed"] is True
     assert report["violations"] == []
+
+
+def test_shadow_code_purge_gate_default_targets_cover_scripts_tree():
+    targets = default_targets()
+    rel_paths = {p.relative_to(ROOT).as_posix() for p in targets}
+    assert len(targets) > 3
+    assert "scripts/workflow_runner.py" in rel_paths
+    assert "scripts/full_workflow_runner.py" in rel_paths
+    assert "scripts/system_log_evaluator.py" in rel_paths

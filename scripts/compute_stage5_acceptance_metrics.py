@@ -213,15 +213,21 @@ def compute_metrics(logs_dir: Path, baseline_path: Path) -> Dict[str, Any]:
     baseline_p95 = baseline.get("p95_decision_latency")
     baseline_duplicate_rate = baseline.get("same_trace_ai_duplicate_call_rate")
 
+    sample_sizes = {
+        "decision_gate_rows": len(decision),
+        "scorecard_rows": len(scorecard),
+        "replay_join_rows": len(replay_join),
+        "raw_ingest_rows": len(raw_ingest),
+    }
+    insufficient_reasons = [f"{name}=0" for name, count in sample_sizes.items() if int(count) <= 0]
+    insufficient_sample = len(insufficient_reasons) > 0
+
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "logs_dir": str(logs_dir),
-        "sample_sizes": {
-            "decision_gate_rows": len(decision),
-            "scorecard_rows": len(scorecard),
-            "replay_join_rows": len(replay_join),
-            "raw_ingest_rows": len(raw_ingest),
-        },
+        "sample_sizes": sample_sizes,
+        "insufficient_sample": insufficient_sample,
+        "insufficient_sample_reasons": insufficient_reasons,
         "metrics": {
             "missing_opportunity_but_execute_count": missing_opp_execute,
             "market_data_default_used_in_execute_count": default_execute,
@@ -266,7 +272,7 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
+    return 2 if report.get("insufficient_sample") else 0
 
 
 if __name__ == "__main__":

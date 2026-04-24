@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -156,3 +157,62 @@ def test_compute_duplicate_rate(tmp_path):
     assert report["total_traces"] == 2
     assert report["current_value"] == 0.5
     assert report["comparison"] == "improved_or_equal"
+
+
+def test_compute_stage5_acceptance_metrics_empty_window_is_insufficient_with_nonzero_exit(tmp_path):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(json.dumps({"metrics": {}}, ensure_ascii=False), encoding="utf-8")
+    out_path = tmp_path / "stage5_metrics.json"
+
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "compute_stage5_acceptance_metrics.py"),
+        "--logs-dir",
+        str(logs_dir),
+        "--baseline",
+        str(baseline_path),
+        "--out",
+        str(out_path),
+    ]
+    completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    assert completed.returncode != 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["insufficient_sample"] is True
+    reasons = set(payload["insufficient_sample_reasons"])
+    assert "decision_gate_rows=0" in reasons
+    assert "scorecard_rows=0" in reasons
+    assert "replay_join_rows=0" in reasons
+    assert "raw_ingest_rows=0" in reasons
+
+
+def test_compute_duplicate_rate_empty_window_is_insufficient_with_nonzero_exit(tmp_path):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps({"metrics": {"same_trace_ai_duplicate_call_rate": 0.5}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "dup_metrics.json"
+
+    cmd = [
+        sys.executable,
+        str(ROOT / "scripts" / "compute_same_trace_ai_duplicate_call_rate.py"),
+        "--logs-dir",
+        str(logs_dir),
+        "--baseline",
+        str(baseline_path),
+        "--out",
+        str(out_path),
+    ]
+    completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    assert completed.returncode != 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["total_traces"] == 0
+    assert payload["insufficient_sample"] is True
+    assert payload["comparison"] == "insufficient_sample"
+    assert payload["current_value"] is None

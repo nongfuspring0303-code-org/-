@@ -53,11 +53,12 @@ def compute_duplicate_rate(logs_dir: Path, baseline_path: Path) -> Dict[str, Any
 
     total_traces = len(counts)
     duplicate_traces = sum(1 for _, n in counts.items() if n > 1)
-    duplicate_rate = round(_safe_rate(duplicate_traces, total_traces), 6)
+    insufficient_sample = total_traces == 0
+    duplicate_rate = None if insufficient_sample else round(_safe_rate(duplicate_traces, total_traces), 6)
     baseline_rate = _load_baseline_rate(baseline_path)
 
-    comparison = "no_baseline"
-    if baseline_rate is not None:
+    comparison = "insufficient_sample" if insufficient_sample else "no_baseline"
+    if not insufficient_sample and baseline_rate is not None:
         comparison = "improved_or_equal" if duplicate_rate <= baseline_rate else "regressed"
 
     return {
@@ -67,6 +68,7 @@ def compute_duplicate_rate(logs_dir: Path, baseline_path: Path) -> Dict[str, Any
         "total_traces": total_traces,
         "duplicate_traces": duplicate_traces,
         "current_value": duplicate_rate,
+        "insufficient_sample": insufficient_sample,
         "baseline_path": str(baseline_path),
         "baseline_value": baseline_rate,
         "comparison": comparison,
@@ -88,7 +90,7 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
+    return 2 if report.get("insufficient_sample") else 0
 
 
 if __name__ == "__main__":

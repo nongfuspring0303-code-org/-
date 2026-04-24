@@ -11,11 +11,13 @@ from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ALLOWLIST = ROOT / "configs" / "shadow_code_purge_allowlist.json"
-DEFAULT_TARGETS = [
-    ROOT / "scripts" / "full_workflow_runner.py",
-    ROOT / "scripts" / "workflow_runner.py",
-    ROOT / "scripts" / "system_log_evaluator.py",
-]
+
+
+def default_targets() -> List[Path]:
+    scripts_dir = ROOT / "scripts"
+    return sorted(
+        p for p in scripts_dir.rglob("*.py") if p.is_file() and "__pycache__" not in p.parts
+    )
 
 
 @dataclass(frozen=True)
@@ -99,11 +101,11 @@ def main() -> int:
         "--target",
         action="append",
         default=[],
-        help="Relative path under repo root to check; can be repeated. Defaults to Stage5 critical runtime files.",
+        help="Relative path under repo root to check; can be repeated. Defaults to all Python files under scripts/.",
     )
     args = parser.parse_args()
 
-    targets = [ROOT / t for t in args.target] if args.target else list(DEFAULT_TARGETS)
+    targets = [ROOT / t for t in args.target] if args.target else default_targets()
     report = evaluate_purge_gate(targets=targets, allowlist_path=args.allowlist)
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.out:

@@ -100,6 +100,56 @@ def test_stage5_pipeline_stage_and_scorecard_written(tmp_path):
     assert report_daily.exists()
 
 
+def test_stage5_scorecard_persists_semantic_contract_fields(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))
+
+    monkeypatch.setattr(
+        runner.semantic,
+        "analyze",
+        lambda _headline, _summary: {
+            "event_type": "other",
+            "sentiment": "negative",
+            "confidence": 80,
+            "recommended_chain": "trade_chain",
+            "recommended_stocks": ["XLE", "CVX"],
+            "a0_event_strength": 75,
+            "expectation_gap": 15,
+            "transmission_candidates": ["XLE", "USO", "CVX"],
+            "fallback_reason": "",
+        },
+    )
+
+    monkeypatch.setattr(
+        runner.semantic,
+        "analyze_event",
+        lambda _headline, _summary, **_kwargs: {
+            "event_type": "other",
+            "event_time": "2026-04-25T00:00:00Z",
+            "evidence_grade": "B",
+        },
+    )
+
+    out = runner.run(_base_payload())
+    execution_in = out["execution"]["input"]
+    assert execution_in["recommended_chain"] == "trade_chain"
+    assert execution_in["recommended_stocks"] == ["XLE", "CVX"]
+    assert execution_in["transmission_candidates"] == ["XLE", "USO", "CVX"]
+
+    score_rows = _read_jsonl(logs_dir / "trace_scorecard.jsonl")
+    assert score_rows
+    latest = score_rows[-1]
+    assert latest["ai_sentiment"] == "negative"
+    assert latest["ai_confidence"] == 80
+    assert latest["ai_recommended_chain"] == "trade_chain"
+    assert latest["ai_recommended_stocks"] == ["XLE", "CVX"]
+    assert latest["ai_a0_event_strength"] == 75
+    assert latest["ai_expectation_gap"] == 15
+    assert latest["ai_transmission_candidates"] == ["XLE", "USO", "CVX"]
+    assert latest["semantic_fallback_reason"] == ""
+    assert latest["ai_missing_fields"] == []
+
+
 def test_stage5_rejected_and_quarantine_written_for_non_execute(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))

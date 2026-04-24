@@ -199,6 +199,44 @@ class FullWorkflowRunner:
         opportunity_count = execution_in.get("opportunity_count")
         final_reason = str(final.get("reason", ""))
         theme_tags = execution_in.get("theme_tags", [])
+        def _safe_int(value: Any, default: int = 0) -> int:
+            try:
+                return int(float(value))
+            except (TypeError, ValueError):
+                return default
+
+        ai_sentiment = str(execution_in.get("sentiment", "neutral") or "neutral")
+        ai_confidence = _safe_int(execution_in.get("confidence", 0), 0)
+        ai_recommended_chain = str(execution_in.get("recommended_chain", "") or "")
+        ai_recommended_stocks_raw = execution_in.get("recommended_stocks", [])
+        ai_a0_event_strength = _safe_int(execution_in.get("a0_event_strength", 0), 0)
+        ai_expectation_gap = _safe_int(execution_in.get("expectation_gap", 0), 0)
+        ai_transmission_candidates_raw = execution_in.get("transmission_candidates", [])
+        semantic_fallback_reason = str(execution_in.get("semantic_fallback_reason", "") or "")
+
+        ai_recommended_stocks = (
+            [str(x).strip() for x in ai_recommended_stocks_raw if str(x).strip()]
+            if isinstance(ai_recommended_stocks_raw, list)
+            else []
+        )
+        ai_transmission_candidates = (
+            [str(x).strip() for x in ai_transmission_candidates_raw if str(x).strip()]
+            if isinstance(ai_transmission_candidates_raw, list)
+            else []
+        )
+        ai_missing_fields = [
+            key
+            for key in (
+                "sentiment",
+                "confidence",
+                "recommended_chain",
+                "recommended_stocks",
+                "a0_event_strength",
+                "expectation_gap",
+                "transmission_candidates",
+            )
+            if key not in execution_in
+        ]
 
         sector_whitelist = self._load_sector_whitelist()
         ticker_truth_pool = self._load_ticker_truth_pool()
@@ -386,6 +424,15 @@ class FullWorkflowRunner:
             "mapping_acceptance_score": round(mapping_acceptance_score, 2),
             "b_overall_score": round(b_overall_score, 2),
             "b_signoff_ready": b_signoff_ready,
+            "ai_sentiment": ai_sentiment,
+            "ai_confidence": ai_confidence,
+            "ai_recommended_chain": ai_recommended_chain,
+            "ai_recommended_stocks": ai_recommended_stocks,
+            "ai_a0_event_strength": ai_a0_event_strength,
+            "ai_expectation_gap": ai_expectation_gap,
+            "ai_transmission_candidates": ai_transmission_candidates,
+            "semantic_fallback_reason": semantic_fallback_reason,
+            "ai_missing_fields": ai_missing_fields,
             "a_gate_blocker_codes": a_gate_blocker_codes,
             "a_gate_blocker_count": a_gate_blocker_count,
             "a_gate_blocker_present": a_gate_blocker_present,
@@ -882,6 +929,14 @@ class FullWorkflowRunner:
             "human_confirmed": payload.get("human_confirmed", False),
             "has_opportunity": has_opportunity,
             "opportunity_count": len(opportunities),
+            "sentiment": semantic_out.get("sentiment", "neutral"),
+            "confidence": semantic_out.get("confidence", 0),
+            "recommended_chain": semantic_out.get("recommended_chain", ""),
+            "recommended_stocks": semantic_out.get("recommended_stocks", []),
+            "a0_event_strength": semantic_out.get("a0_event_strength", 0),
+            "expectation_gap": semantic_out.get("expectation_gap", 0),
+            "transmission_candidates": semantic_out.get("transmission_candidates", []),
+            "semantic_fallback_reason": semantic_out.get("fallback_reason", ""),
             "semantic_event_type": semantic_out.get("event_type", "other"),
             "sector_candidates": [item.get("sector") for item in conduction_out.get("sector_impacts", []) if item.get("sector")],
             "ticker_candidates": [item.get("symbol") for item in conduction_out.get("stock_candidates", []) if item.get("symbol")],

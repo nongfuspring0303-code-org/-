@@ -181,6 +181,54 @@ def test_compute_duplicate_rate_groups_by_trace_id_not_event_hash(tmp_path):
     assert report["current_value"] == 0.5
 
 
+def test_compute_stage5_acceptance_metrics_groups_duplicate_rate_by_trace_id_not_event_hash(tmp_path):
+    logs_dir = tmp_path / "logs"
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {"metrics": {"p95_decision_latency": 3.0, "same_trace_ai_duplicate_call_rate": 0.5}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    # Required non-empty windows to avoid insufficient-sample gate.
+    _write_jsonl(
+        logs_dir / "decision_gate.jsonl",
+        [
+            {
+                "trace_id": "T1",
+                "final_action": "WATCH",
+                "final_reason": "ok",
+                "ingest_ts": "2026-04-24T01:00:00Z",
+                "decision_ts": "2026-04-24T01:00:01Z",
+            }
+        ],
+    )
+    _write_jsonl(
+        logs_dir / "replay_join_validation.jsonl",
+        [{"replay_primary_key_complete": True, "orphan_replay_count": 0, "orphan_execution_count": 0}],
+    )
+    _write_jsonl(
+        logs_dir / "trace_scorecard.jsonl",
+        [{"placeholder_count": 0, "non_whitelist_sector_count": 0, "semantic_event_type": "other"}],
+    )
+    _write_jsonl(
+        logs_dir / "raw_news_ingest.jsonl",
+        [
+            {"trace_id": "T1", "event_hash": "h1"},
+            {"trace_id": "T1", "event_hash": "h2"},
+            {"trace_id": "T2", "event_hash": "h3"},
+        ],
+    )
+
+    report = compute_metrics(logs_dir=logs_dir, baseline_path=baseline_path)
+    assert report["insufficient_sample"] is False
+    assert report["sample_sizes"]["raw_ingest_rows"] == 3
+    assert report["metrics"]["same_trace_ai_duplicate_call_rate"] == 0.5
+    assert report["metrics"]["same_trace_ai_duplicate_call_rate"] != 0
+
+
 def test_compute_stage5_acceptance_metrics_empty_window_is_insufficient_with_nonzero_exit(tmp_path):
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)

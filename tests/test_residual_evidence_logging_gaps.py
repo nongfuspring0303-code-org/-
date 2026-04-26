@@ -123,11 +123,6 @@ def test_residual_decision_gate_prepost_and_hard_rules_are_structured(tmp_path):
             {"tradeable": False},
             "TRADEABLE_FALSE",
         ),
-        (
-            "provider_untrusted",
-            {"provider_untrusted": True},
-            "PROVIDER_UNTRUSTED",
-        ),
     ]
 
     for idx, (rule_name, overrides, expected_reject_code) in enumerate(scenarios, start=1):

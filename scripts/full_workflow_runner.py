@@ -873,7 +873,22 @@ class FullWorkflowRunner:
         analysis_out["opportunity_update"] = opportunity_update
         opportunities = opportunity_update.get("opportunities", []) if isinstance(opportunity_update, dict) else []
         has_opportunity = bool(opportunities)
-        provider_meta = self._provider_meta_from_opportunity(self.opportunity)
+        provider_meta = {}
+        if isinstance(opportunity_update, dict):
+            raw_provider_meta = opportunity_update.get("provider_meta")
+            if isinstance(raw_provider_meta, dict):
+                provider_meta = {
+                    "provider_chain": list(raw_provider_meta.get("provider_chain", []) or []),
+                    "providers_attempted": list(raw_provider_meta.get("providers_attempted", []) or []),
+                    "providers_succeeded": list(raw_provider_meta.get("providers_succeeded", []) or []),
+                    "providers_failed": list(raw_provider_meta.get("providers_failed", []) or []),
+                    "provider_failure_reasons": dict(raw_provider_meta.get("provider_failure_reasons", {}) or {}),
+                    "fallback_used": bool(raw_provider_meta.get("fallback_used", False)),
+                    "fallback_reason": str(raw_provider_meta.get("fallback_reason", "") or ""),
+                    "unresolved_symbols": list(raw_provider_meta.get("unresolved_symbols", []) or []),
+                }
+        if not provider_meta:
+            provider_meta = self._provider_meta_from_opportunity(self.opportunity)
         self._append_jsonl(
             self.market_data_provenance_log_path,
             {

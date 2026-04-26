@@ -241,6 +241,45 @@ def test_stage5_market_provenance_includes_provider_failure_metadata(tmp_path, m
     assert isinstance(latest.get("unresolved_symbols", []), list)
 
 
+def test_stage5_market_provenance_does_not_leak_provider_meta_across_traces(tmp_path, monkeypatch):
+    logs_dir = tmp_path / "logs"
+    runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))
+
+    monkeypatch.setattr(runner.opportunity._market_data_adapter, "_fetch_yahoo", lambda _symbols: {})
+    monkeypatch.setattr(runner.opportunity._market_data_adapter, "_fetch_stooq", lambda _symbols: {})
+
+    first = _base_payload()
+    first["request_id"] = "REQ-S5-PROV-LEAK-001"
+    first["batch_id"] = "BATCH-S5-PROV-LEAK-001"
+    runner.run(first)
+
+    # Disable price fetch for the second trace and make sure adapter fetch is not used.
+    runner.opportunity._price_fetch_enabled = False
+
+    def _should_not_call(_symbols):
+        raise AssertionError("provider fetch should not be called when price fetch is disabled")
+
+    monkeypatch.setattr(runner.opportunity._market_data_adapter, "_fetch_yahoo", _should_not_call)
+    monkeypatch.setattr(runner.opportunity._market_data_adapter, "_fetch_stooq", _should_not_call)
+
+    second = _base_payload()
+    second["request_id"] = "REQ-S5-PROV-LEAK-002"
+    second["batch_id"] = "BATCH-S5-PROV-LEAK-002"
+    runner.run(second)
+
+    records = _read_jsonl(logs_dir / "market_data_provenance.jsonl")
+    assert len(records) >= 2
+    latest = records[-1]
+    assert latest["request_id"] == "REQ-S5-PROV-LEAK-002"
+    assert latest.get("providers_attempted", []) == []
+    assert latest.get("providers_succeeded", []) == []
+    assert latest.get("providers_failed", []) == []
+    assert latest.get("provider_failure_reasons", {}) == {}
+    assert latest.get("fallback_used", False) is False
+    assert latest.get("fallback_reason", "") == ""
+    assert latest.get("unresolved_symbols", []) == []
+
+
 def test_stage5_rejected_and_quarantine_written_for_non_execute(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))

@@ -146,9 +146,37 @@ def test_market_data_adapter_yahoo_prefers_yfinance_before_http(monkeypatch):
         raise AssertionError("HTTP fallback should not be called when yfinance returns prices")
 
     monkeypatch.setattr(mdamod.urllib.request, "urlopen", _unexpected_urlopen)
-    adapter = MarketDataAdapter()
+    cfg = {"runtime.price_fetch.yahoo_use_yfinance": True}
+    adapter = MarketDataAdapter(config_getter=lambda k, d=None: cfg.get(k, d))
     out = adapter._fetch_yahoo(["NVDA"])
     assert out == {"NVDA": 209.09}
+
+
+def test_market_data_adapter_yahoo_does_not_use_yfinance_by_default(monkeypatch):
+    class _FakeYF:
+        @staticmethod
+        def Ticker(_symbol):
+            raise AssertionError("yfinance should stay disabled unless explicitly enabled")
+
+    monkeypatch.setattr(mdamod, "yf", _FakeYF())
+
+    def _fake_urlopen(*_args, **_kwargs):
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def read(self):
+                return b'{"quoteResponse":{"result":[]}}'
+
+        return _Resp()
+
+    monkeypatch.setattr(mdamod.urllib.request, "urlopen", _fake_urlopen)
+    adapter = MarketDataAdapter(config_getter=lambda _k, d=None: d)
+    out = adapter._fetch_yahoo(["NVDA"])
+    assert out == {}
 
 
 def test_market_data_adapter_records_failed_providers_and_fallback_reason():

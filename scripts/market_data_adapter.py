@@ -46,6 +46,9 @@ class MarketDataAdapter:
         self._now = now_fn or time.time
         self._cache: Dict[str, Dict[str, float]] = {}
         self._last_meta = FetchMeta([], [], [], [], 0, [], {}, False, "")
+        # Runtime behavior guard:
+        # default OFF to preserve existing missing-price -> WATCH semantics unless explicitly enabled.
+        self._use_yfinance = bool(self._get("runtime.price_fetch.yahoo_use_yfinance", False))
 
         self.cache_ttl_seconds = self._safe_int(self._get("runtime.price_fetch.cache_ttl_seconds", 120), 120)
         self.max_batch_size = self._safe_int(self._get("runtime.price_fetch.max_batch_size", 40), 40)
@@ -73,6 +76,9 @@ class MarketDataAdapter:
     def last_meta(self) -> FetchMeta:
         return self._last_meta
 
+    def reset_meta(self) -> None:
+        self._last_meta = FetchMeta(list(self.provider_chain), [], [], [], 0, [], {}, False, "")
+
     def quote_one(self, symbol: str) -> Optional[float]:
         out = self.quote_many([symbol])
         return out.get(symbol.upper().strip())
@@ -80,7 +86,7 @@ class MarketDataAdapter:
     def quote_many(self, symbols: Iterable[str]) -> Dict[str, float]:
         normalized = [str(s).upper().strip() for s in symbols if str(s).strip()]
         if not normalized:
-            self._last_meta = FetchMeta(self.provider_chain, [], [], [], 0, [], {}, False, "")
+            self.reset_meta()
             return {}
 
         now = self._now()
@@ -159,7 +165,7 @@ class MarketDataAdapter:
             return {}
 
         # Prefer yfinance first to avoid Yahoo HTTP quote auth/cookie fragility.
-        if yf is not None:
+        if self._use_yfinance and yf is not None:
             out_yf: Dict[str, float] = {}
             for symbol in symbols:
                 try:
@@ -174,11 +180,15 @@ class MarketDataAdapter:
                         out_yf[symbol.upper().strip()] = float(price)
                 except Exception:
                     continue
-            if out_yf:
+            unresolved = [sym for sym in symbols if sym.upper().strip() not in out_yf]
+            if not unresolved:
                 return out_yf
+        else:
+            out_yf = {}
+            unresolved = list(symbols)
 
         base = str(self._get("runtime.price_fetch.yahoo_quote_base", "https://query1.finance.yahoo.com/v7/finance/quote?symbols=")).strip()
-        joined = ",".join(symbols)
+        joined = ",".join(unresolved)
         url = f"{base}{urllib.parse.quote(joined)}"
         try:
             with urllib.request.urlopen(url, timeout=self.timeout_seconds) as resp:
@@ -190,9 +200,10 @@ class MarketDataAdapter:
                 price = row.get("regularMarketPrice")
                 if symbol and price is not None:
                     out[symbol] = float(price)
+            out.update(out_yf)
             return out
         except Exception:
-            return {}
+            return out_yf
 
     def _fetch_stooq(self, symbols: List[str]) -> Dict[str, float]:
         # 轻量 fallback：逐 symbol 请求，避免引入额外依赖。

@@ -1,6 +1,6 @@
 # PR95 Rule-Test Mapping
 
-Head: 1b7acb5 (provider_untrusted gate hardening split from PR94)
+Head: 44072f4 (latest head; provider_untrusted gate hardening split from PR94)
 
 ## R-A-S2-ProviderTrustGate
 - Rule statement: when `provider_untrusted=true`, output gate must block `EXECUTE`.

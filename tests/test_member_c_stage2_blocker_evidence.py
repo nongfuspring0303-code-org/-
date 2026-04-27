@@ -22,6 +22,7 @@ def _wait_for_non_empty_jsonl(path: Path, timeout_sec: float = 2.0) -> list[dict
     return []
 
 
+# R-C-S2-ProvenanceOnBlockerPath
 def test_stage2_c_provenance_fields_persist_on_blocker_path(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))
@@ -57,6 +58,7 @@ def test_stage2_c_provenance_fields_persist_on_blocker_path(tmp_path):
     assert isinstance(rec["market_data_fallback_used"], bool)
 
 
+# R-C-S2-DecisionGateEvidence
 def test_stage2_c_decision_gate_has_blocker_evidence(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = WorkflowRunner(
@@ -106,6 +108,7 @@ def test_stage2_c_decision_gate_has_blocker_evidence(tmp_path):
     assert "missing_opportunity" in rec["output_gate"].get("blockers", [])
 
 
+# R-A-S2-ProviderTrustGate
 def test_stage2_c_provider_untrusted_is_blocked_by_output_gate(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = WorkflowRunner(
@@ -156,6 +159,7 @@ def test_stage2_c_provider_untrusted_is_blocked_by_output_gate(tmp_path):
     assert "provider_untrusted" in rec["output_gate"].get("blockers", [])
 
 
+# R-C-S2-BlockerPathNoExecutionEmit
 def test_stage2_c_blocker_path_no_execution_emit_and_replay_written(tmp_path):
     logs_dir = tmp_path / "logs"
     runner = WorkflowRunner(
@@ -208,6 +212,7 @@ def test_stage2_c_blocker_path_no_execution_emit_and_replay_written(tmp_path):
     assert rec["final_action"] == out["final"]["action"]
 
 
+# R-C-S2-ReplayDurableBeforeReturn
 def test_stage2_c_replay_write_durable_before_run_return(tmp_path, monkeypatch):
     logs_dir = tmp_path / "logs"
     runner = WorkflowRunner(

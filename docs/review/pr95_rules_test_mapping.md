@@ -1,6 +1,6 @@
 # PR95 Rule-Test Mapping
 
-Head: 44072f4 (latest head; provider_untrusted gate hardening split from PR94)
+Head: 5b767cbfec22a9cb53341782aea6e5829c2c64e8
 
 ## R-A-S2-ProviderTrustGate
 - Rule statement: when `provider_untrusted=true`, output gate must block `EXECUTE`.
@@ -15,3 +15,24 @@ Head: 44072f4 (latest head; provider_untrusted gate hardening split from PR94)
 - Test ID: `T-C-S2-DecisionGate-BlockerEvidence`
 - Test anchor: `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_decision_gate_has_blocker_evidence`
 - Assertion summary: blocker event persists request/batch/event_hash and gate blockers in decision gate log.
+
+## R-C-S2-ProvenanceOnBlockerPath
+- Rule statement: provenance fields must persist on blocker path (non-EXECUTE).
+- Code anchor: `scripts/full_workflow_runner.py` (market_data_provenance logging).
+- Test ID: `T-C-S2-ProvenanceOnBlockerPath`
+- Test anchor: `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_provenance_fields_persist_on_blocker_path`
+- Assertion summary: market_data_provenance.jsonl persists trace/correlation fields on non-EXECUTE path.
+
+## R-C-S2-BlockerPathNoExecutionEmit
+- Rule statement: blocker path must not emit execution_emit records.
+- Code anchor: `scripts/workflow_runner.py` (execution emit skipped on blocker path).
+- Test ID: `T-C-S2-BlockerPathNoExecutionEmit`
+- Test anchor: `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_blocker_path_no_execution_emit_and_replay_written`
+- Assertion summary: execution_emit.jsonl is empty on blocker path; replay_write.jsonl retains evidence.
+
+## R-C-S2-ReplayDurableBeforeReturn
+- Rule statement: replay_write must be durable before run() returns (no fire-and-forget).
+- Code anchor: `scripts/workflow_runner.py::_log_replay_task`.
+- Test ID: `T-C-S2-ReplayDurableBeforeReturn`
+- Test anchor: `tests/test_member_c_stage2_blocker_evidence.py::test_stage2_c_replay_write_durable_before_run_return`
+- Assertion summary: replay_write.jsonl is readable immediately after run() returns, even with delayed _log_replay_task.

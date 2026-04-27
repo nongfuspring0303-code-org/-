@@ -125,6 +125,14 @@ class FullWorkflowRunner:
         txt = FullWorkflowRunner._norm_text(value)
         return any(token in txt for token in ("placeholder", "template collapse", "template", "unknown_placeholder"))
 
+    @staticmethod
+    def _is_missing_provenance_value(value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str) and not value.strip():
+            return True
+        return False
+
     def _load_sector_whitelist(self) -> set[str]:
         cfg_path = ROOT / "configs" / "sector_impact_mapping.yaml"
         if not cfg_path.exists():
@@ -727,7 +735,7 @@ class FullWorkflowRunner:
             "http_status",
             "error_code",
         ):
-            if provenance_record.get(field) is None:
+            if self._is_missing_provenance_value(provenance_record.get(field)):
                 missing_fields.append(field)
         if not symbols_requested:
             missing_fields.append("symbols_requested")

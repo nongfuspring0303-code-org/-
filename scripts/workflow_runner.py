@@ -742,6 +742,8 @@ class WorkflowRunner:
             return "MARKET_DATA_FALLBACK_USED"
         if "market_data_stale" in rule_set:
             return "MARKET_DATA_STALE"
+        if "market_data_missing" in rule_set:
+            return "MARKET_DATA_MISSING"
         if "tradeable_false" in rule_set:
             return "TRADEABLE_FALSE"
         return "EXECUTION_GATE_REJECTED"

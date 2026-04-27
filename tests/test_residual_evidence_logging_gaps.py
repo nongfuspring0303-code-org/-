@@ -246,3 +246,41 @@ def test_residual_evaluator_replay_execution_health_detects_missing_links(tmp_pa
     assert replay_health["execute_without_replay_count"] == 1
     assert replay_health["execute_without_gate_count"] == 1
     assert 0.0 <= replay_health["replay_execution_separation_rate"] <= 1.0
+
+
+def test_residual_tighten_missing_and_reject_code(tmp_path):
+    logs_dir = tmp_path / "logs"
+    runner = FullWorkflowRunner(audit_dir=str(logs_dir), state_db_path=str(tmp_path / "state.db"))
+
+    # 1. provider-call 字段为空字符串或空白字符串 -> missing
+    payload_missing = {
+        "request_id": "REQ-RESIDUAL-TIGHTEN-001",
+        "batch_id": "BATCH-RESIDUAL-TIGHTEN-001",
+        "headline": "Tighten missing check",
+        "source": "https://example.com",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "market_data_provider": "  ",  # blank string
+        "provider_path": "",  # empty string
+    }
+    runner.run(payload_missing)
+    rows = _read_jsonl(logs_dir / "market_data_provenance.jsonl")
+    rec = rows[-1]
+    assert "market_data_provider" in rec["provenance_field_missing"]
+    assert "provider_path" in rec["provenance_field_missing"]
+
+    # 2. market_data_missing blocker -> MARKET_DATA_MISSING reject code
+    wr = WorkflowRunner(
+        request_store_path=str(tmp_path / "seen_ids_residual_tighten.txt"),
+        audit_dir=str(logs_dir),
+    )
+    payload_gate = _base_execution_payload(
+        request_id="REQ-RESIDUAL-TIGHTEN-002",
+        batch_id="BATCH-RESIDUAL-TIGHTEN-002",
+        event_hash="EVHASH-RESIDUAL-TIGHTEN-002",
+    )
+    payload_gate.update({"market_data_present": False})
+    wr.run(payload_gate)
+    gate_rows = _read_jsonl(logs_dir / "decision_gate.jsonl")
+    gate_rec = gate_rows[-1]
+    assert "market_data_missing" in gate_rec["triggered_rules"]
+    assert gate_rec["reject_reason_code"] == "MARKET_DATA_MISSING"

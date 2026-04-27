@@ -1,8 +1,9 @@
 # PR93 Rules-Test Mapping (Governance Patch)
 
 **PR**: #93
-**Reviewed Head Baseline**: `76342aa6e20a94549eea891fc4b03c573c943d0c`
-**Reviewed At UTC**: `2026-04-27T15:52:53Z`
+**Reviewed Code Baseline**: `76342aa6e20a94549eea891fc4b03c573c943d0c`
+**Reviewed At UTC**: `2026-04-27T15:59:54Z`
+**Note**: This baseline pins the latest code-bearing head; doc-only review-metadata commits may advance the PR head without changing this baseline.
 **Purpose**: close Rule ID ↔ Test ID traceability gap required by PR review template v2.1.
 
 | Rule ID | Rule Statement | Test ID | Test Anchor |

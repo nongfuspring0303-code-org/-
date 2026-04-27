@@ -239,7 +239,8 @@ registry:
     output_schema: opportunity_outcome.schema.json
     dependencies: [Logger]
     config: outcome_scoring_policy.yaml
-    test_case: tests/test_outcome_attribution_engine.py
+    test_case: tests/test_opportunity_outcome_schema.py
+    acceptance_case: tests/test_stage6_metric_dictionary.py
     contract_artifacts:
       - docs/stage6/STAGE6_SCOPE_CANONICAL.md
       - schemas/opportunity_outcome.schema.json

@@ -19,7 +19,7 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from outcome_attribution_engine import run_engine
+from outcome_attribution_engine import run_engine, _require_policy_score_buckets
 
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "stage6"
 
@@ -457,6 +457,16 @@ def test_summary_schema_and_coverage_metrics(outcome_summary):
     for key in required_coverage_keys:
         assert key in outcome_summary
         assert outcome_summary[key] is not None
+
+
+def test_score_buckets_policy_missing_fails_fast():
+    with pytest.raises(ValueError, match="missing score_buckets section"):
+        _require_policy_score_buckets({})
+
+
+def test_score_buckets_policy_missing_name_fails_fast():
+    with pytest.raises(ValueError, match="missing required key 'name'"):
+        _require_policy_score_buckets({"score_buckets": [{"min": 80, "max": None}]})
 
 
 # ---------------------------------------------------------------------------

@@ -76,6 +76,23 @@ def _require_policy_stats(policy: dict) -> dict:
         raise ValueError(f"Invalid policy.stats: missing required keys: {missing}")
     return stats
 
+
+def _require_policy_score_buckets(policy: dict) -> list[dict]:
+    """Return policy['score_buckets'] and fail fast if missing or malformed."""
+    if "score_buckets" not in policy:
+        raise ValueError("Invalid policy: missing score_buckets section")
+    buckets = policy["score_buckets"]
+    if not isinstance(buckets, list) or not buckets:
+        raise ValueError("Invalid policy.score_buckets: must be a non-empty list")
+    for idx, bucket in enumerate(buckets):
+        if not isinstance(bucket, dict):
+            raise ValueError(f"Invalid policy.score_buckets[{idx}]: must be an object")
+        if not bucket.get("name"):
+            raise ValueError(
+                f"Invalid policy.score_buckets[{idx}]: missing required key 'name'"
+            )
+    return buckets
+
 # ---------------------------------------------------------------------------
 # Data quality classification helpers
 # ---------------------------------------------------------------------------
@@ -376,7 +393,7 @@ def _assign_score_bucket(score: Optional[float], policy: dict) -> Optional[str]:
     """Assign score to a bucket based on policy."""
     if score is None:
         return None
-    buckets = policy.get("score_buckets", [])
+    buckets = _require_policy_score_buckets(policy)
     for bucket in buckets:
         name = bucket["name"]
         mn = bucket.get("min")
@@ -579,7 +596,7 @@ def _compute_score_buckets(opportunities: list[dict], policy: dict) -> list[dict
         if bucket:
             buckets_map[bucket].append(o)
 
-    bucket_order = [b["name"] for b in policy.get("score_buckets", []) if b.get("name")]
+    bucket_order = [b["name"] for b in _require_policy_score_buckets(policy)]
     result = []
     for name in bucket_order:
         recs = buckets_map.get(name, [])

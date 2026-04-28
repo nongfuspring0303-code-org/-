@@ -77,6 +77,11 @@ def outcome_summary(engine_result) -> dict:
 
 
 @pytest.fixture(scope="module")
+def mapping_attributions(engine_result) -> list[dict]:
+    return _read_jsonl(Path(engine_result["mapping_path"]))
+
+
+@pytest.fixture(scope="module")
 def score_buckets(engine_result) -> dict:
     return _load_json(Path(engine_result["bucket_path"]))
 
@@ -245,6 +250,14 @@ def test_join_key_missing_is_invalid(opportunity_outcomes):
     assert outcome is not None
     assert outcome["data_quality"] == "invalid"
     assert outcome["outcome_status"] == "invalid_join_key"
+
+
+def test_join_key_missing_mapping_status(mapping_attributions):
+    """JOINKEY-MISSING must map to join_key_missing, not mapping_success."""
+    rec = _find_by_trace(mapping_attributions, "JOINKEY-MISSING-001")
+    assert rec is not None
+    assert rec["mapping_status"] == "join_key_missing"
+    assert rec["mapping_failure_reason"] == "join_key_missing"
 
 
 def test_symbol_missing_is_invalid(opportunity_outcomes):

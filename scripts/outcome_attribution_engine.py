@@ -754,12 +754,18 @@ def _build_outcome_record(
 # Mapping attribution builder
 # ---------------------------------------------------------------------------
 
-def _build_mapping_attribution(opportunity_id: str, joined: dict) -> dict:
+def _build_mapping_attribution(opportunity_id: str, joined: dict, outcome: Optional[dict] = None) -> dict:
     """Build mapping attribution record."""
     mapping_status = "mapping_success"
     mapping_failure: Optional[str] = None
 
-    dq_reasons = joined.get("data_quality_reasons", [])
+    # Prefer the finalized outcome-level data quality reasons so mapping status
+    # stays semantically aligned with outcome classification.
+    dq_reasons = []
+    if outcome is not None:
+        dq_reasons = outcome.get("data_quality_reasons", []) or []
+    if not dq_reasons:
+        dq_reasons = joined.get("data_quality_reasons", []) or []
     if "join_key_missing" in dq_reasons:
         mapping_status = "join_key_missing"
         mapping_failure = "join_key_missing"
@@ -971,7 +977,7 @@ def run_engine(
         opportunities.append(outcome)
 
         # Build mapping attribution
-        mapping = _build_mapping_attribution(opportunity_id, joined)
+        mapping = _build_mapping_attribution(opportunity_id, joined, outcome)
         mapping_attributions.append(mapping)
 
         # Build log trust

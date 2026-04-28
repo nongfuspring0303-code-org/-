@@ -1,0 +1,211 @@
+# Stage6 PR-7b Expected Outcomes
+# Member B: Attribution rules / expected outcome labels
+# Used by Member C for test-driven implementation
+
+schema_version: "stage6.expected_outcomes.v1"
+
+expected:
+  # ===== EXECUTE LONG =====
+  - fixture_id: "EXEC-LONG-HIT"
+    description: "EXECUTE LONG with t5_return +3%, alpha +2% -> hit"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "hit"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.03
+    sector_relative_alpha_t5: 0.02
+
+  - fixture_id: "EXEC-LONG-MISS"
+    description: "EXECUTE LONG with t5_return -3%, alpha -2% -> miss"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "miss"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: -0.03
+    sector_relative_alpha_t5: -0.02
+
+  - fixture_id: "EXEC-LONG-NEUTRAL"
+    description: "EXECUTE LONG with t5_return +1%, alpha 0% -> neutral"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "neutral"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.01
+    sector_relative_alpha_t5: 0.0
+
+  # ===== EXECUTE SHORT =====
+  - fixture_id: "EXEC-SHORT-HIT"
+    description: "EXECUTE SHORT with t5_return -3%, alpha -2% -> hit"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "hit"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "SHORT"
+    t5_return: -0.03
+    sector_relative_alpha_t5: -0.02
+
+  - fixture_id: "EXEC-SHORT-MISS"
+    description: "EXECUTE SHORT with t5_return +3%, alpha +2% -> miss"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "miss"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "SHORT"
+    t5_return: 0.03
+    sector_relative_alpha_t5: 0.02
+
+  # ===== WATCH =====
+  - fixture_id: "WATCH-MISSED-OPPORTUNITY"
+    description: "WATCH LONG with subsequent t5_return +3% -> missed_opportunity"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "missed_opportunity"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.03
+
+  - fixture_id: "WATCH-CORRECT"
+    description: "WATCH LONG with subsequent t5_return -3% -> correct_watch"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "correct_watch"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: -0.03
+
+  - fixture_id: "WATCH-NEUTRAL"
+    description: "WATCH LONG with t5_return +1% -> neutral_watch"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "neutral_watch"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.01
+
+  # ===== BLOCK =====
+  - fixture_id: "BLOCK-CORRECT"
+    description: "BLOCK LONG with subsequent t5_return -3% -> correct_block"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "correct_block"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: -0.03
+
+  - fixture_id: "BLOCK-OVERBLOCKED"
+    description: "BLOCK LONG with subsequent t5_return +3% -> overblocked"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "overblocked"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.03
+
+  - fixture_id: "BLOCK-NEUTRAL"
+    description: "BLOCK LONG with t5_return +1% -> neutral_block"
+    expected_outcome_status: "resolved_t5"
+    expected_outcome_label: "neutral_block"
+    expected_data_quality: "valid"
+    expected_primary_stats_inclusion: true
+    direction: "LONG"
+    t5_return: 0.01
+
+  # ===== DATA QUALITY EDGE CASES =====
+  - fixture_id: "JOIN-KEY-MISSING"
+    description: "Missing join key -> invalid, excluded from primary stats"
+    expected_outcome_status: "invalid_join_key"
+    expected_outcome_label: null
+    expected_data_quality: "invalid"
+    expected_primary_stats_inclusion: false
+    expected_primary_failure_reason: "join_key_missing"
+
+  - fixture_id: "SYMBOL-MISSING"
+    description: "Missing symbol -> invalid"
+    expected_outcome_status: "symbol_untradeable"
+    expected_outcome_label: null
+    expected_data_quality: "invalid"
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "BENCHMARK-MISSING"
+    description: "Benchmark missing -> degraded, excluded from alpha primary stats"
+    expected_data_quality: "degraded"
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "PENDING-T5"
+    description: "Pending T+5 -> pending, no hit/miss"
+    expected_outcome_label: null
+    expected_data_quality: "pending"
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "PENDING-CONFIRM-AUDIT"
+    description: "PENDING_CONFIRM -> degraded, audit-only"
+    expected_data_quality: "degraded"
+    expected_outcome_label: null
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "UNKNOWN-AUDIT"
+    description: "UNKNOWN -> degraded, audit-only"
+    expected_data_quality: "degraded"
+    expected_outcome_label: null
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "MOCK-TEST"
+    description: "Mock/test log_source -> invalid, excluded from primary stats"
+    expected_data_quality: "invalid"
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "MKT-DATA-STALE"
+    description: "Stale market data -> degraded"
+    expected_data_quality: "degraded"
+    expected_primary_stats_inclusion: false
+
+  - fixture_id: "MKT-DATA-DEFAULT"
+    description: "Default market data used -> invalid"
+    expected_data_quality: "invalid"
+    expected_primary_stats_inclusion: false
+
+# ===== SCORE BUCKET / MONOTONICITY =====
+score_bucket_tests:
+  - fixture_id: "SCORE-80PLUS"
+    score: 88.0
+    expected_bucket: "80_PLUS"
+  - fixture_id: "SCORE-60-79"
+    score: 68.0
+    expected_bucket: "60_79"
+  - fixture_id: "SCORE-40-59"
+    score: 52.0
+    expected_bucket: "40_59"
+  - fixture_id: "SCORE-LT40"
+    score: 32.0
+    expected_bucket: "LT_40"
+
+# ===== FAILURE REASON ENUM =====
+failure_reason_enum:
+  - mapping_wrong
+  - timing_wrong
+  - market_rejected
+  - source_bad
+  - risk_too_strict
+  - risk_too_loose
+  - provider_bad
+  - market_data_bad
+  - score_not_predictive
+  - gate_rule_wrong
+  - execution_missing
+  - join_key_missing
+  - benchmark_missing
+  - insufficient_sample
+
+# ===== STATS INCLUSION RULES =====
+primary_stats_rules:
+  valid: "included"
+  degraded: "excluded"
+  invalid: "excluded"
+  pending: "excluded"
+  pending_confirm: "excluded"
+  unknown: "excluded"
+  mock_test: "excluded"
+  benchmark_missing: "excluded_from_alpha_primary"

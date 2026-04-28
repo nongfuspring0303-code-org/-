@@ -381,5 +381,53 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action_after_gate": {
+            "enum": ["PENDING_CONFIRM", "UNKNOWN"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome_label": {
+            "not": {
+              "enum": ["hit", "miss"]
+            }
+          },
+          "data_quality": {
+            "not": {
+              "const": "valid"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome_status": {
+            "enum": ["pending_t1", "pending_t5", "pending_t20"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data_quality": {
+            "not": {
+              "const": "valid"
+            }
+          },
+          "outcome_label": {
+            "not": {
+              "enum": ["hit", "miss"]
+            }
+          }
+        }
+      }
+    }
+  ]
 }

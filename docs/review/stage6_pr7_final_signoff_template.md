@@ -1,9 +1,9 @@
 # Stage6 PR-7 Final Sign-off Template
 
-> 文件类型：最终验收模板 / Final Acceptance Gate  
-> 适用范围：Stage6 PR-7 Outcome Attribution / Signal Quality  
-> 当前用途：在 PR-7b-1 / PR-7b-2 / PR-7b-3 全部完成后，用于 PR-7 Final 全量验收  
-> 最高优先级：若本文与 `docs/stage6/STAGE6_SCOPE_CANONICAL.md` 冲突，以 `STAGE6_SCOPE_CANONICAL.md` 为准  
+> 文件类型：最终验收模板 / Final Acceptance Gate
+> 适用范围：Stage6 PR-7 Outcome Attribution / Signal Quality
+> 当前用途：在 PR-7b-1 / PR-7b-2 / PR-7b-3 全部完成后，用于 PR-7 Final 全量验收
+> 最高优先级：若本文与 `docs/stage6/STAGE6_SCOPE_CANONICAL.md` 冲突，以 `STAGE6_SCOPE_CANONICAL.md` 为准
 > 核心边界：只读消费上游证据；不改 Gate；不改 execution；不改 final_action；不改 Stage5 日志结构；不提交真实 runtime 产物
 
 ---
@@ -416,8 +416,8 @@ python3 scripts/system_healthcheck.py --mode dev
 | No runtime boundary violation | ☐ PASS / ☐ FAIL |  |
 | PR 正式审查模板 v2.1 已执行 | ☐ PASS / ☐ FAIL |  |
 
-Reviewer: `<name>`  
-Date: `<YYYY-MM-DD>`  
+Reviewer: `<name>`
+Date: `<YYYY-MM-DD>`
 Decision: `APPROVE / REQUEST CHANGES / BLOCK`
 
 ---
@@ -434,8 +434,8 @@ Decision: `APPROVE / REQUEST CHANGES / BLOCK`
 | Primary/degraded/invalid/pending handling | ☐ PASS / ☐ FAIL |  |
 | Score monotonicity | ☐ PASS / ☐ FAIL |  |
 
-Reviewer: `<name>`  
-Date: `<YYYY-MM-DD>`  
+Reviewer: `<name>`
+Date: `<YYYY-MM-DD>`
 Decision: `APPROVE / REQUEST CHANGES / BLOCK`
 
 ---
@@ -452,8 +452,8 @@ Decision: `APPROVE / REQUEST CHANGES / BLOCK`
 | Replay consistency | ☐ PASS / ☐ FAIL |  |
 | No runtime artifacts committed | ☐ PASS / ☐ FAIL |  |
 
-Reviewer: `<name>`  
-Date: `<YYYY-MM-DD>`  
+Reviewer: `<name>`
+Date: `<YYYY-MM-DD>`
 Decision: `APPROVE / REQUEST CHANGES / BLOCK`
 
 ---

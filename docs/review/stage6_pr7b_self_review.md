@@ -8,7 +8,7 @@
 - 审查人：`Member-C (自审)`
 - Base 分支：`main`
 - Head 分支：`stage6-pr7b-3-replay-report`
-- 最新 Head SHA：`46cae7c`
+- 最新 Head SHA：`d5ea89e`
 - Base SHA：`1f0e770`
 - 变更文件数：`5`
 - 结论是否基于最新 head：`是`
@@ -84,7 +84,9 @@ A tests/test_outcome_replay_consistency.py
 
 当前 PR102 自审结论：
 
-- 已基于当前 latest head `46cae7c`
+- 已基于当前 latest head `d5ea89e`
 - 已基于当前 base `main` / `1f0e770`
 - 已对应当前 5 个 changed files
 - replay consistency 规则追踪与自审文档时效性问题已完成收口
+
+说明：本自审文档更新提交后，PR latest head 可能继续前进；最终审查以 GitHub PR 页面显示的 latest head 与 latest diff 为准。

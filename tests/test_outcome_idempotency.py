@@ -49,6 +49,7 @@ def _run_same_target_twice(tmp_path: Path) -> tuple[dict, dict]:
 
     first = run_engine(logs_dir=logs_dir, out_dir=out_dir)
     first_snapshot = {
+        "idempotency_key": first["idempotency_key"],
         "summary": _load_json(Path(first["summary_path"])),
         "outcomes": _read_jsonl(Path(first["outcome_path"])),
         "mapping": _read_jsonl(Path(first["mapping_path"])),
@@ -57,6 +58,7 @@ def _run_same_target_twice(tmp_path: Path) -> tuple[dict, dict]:
 
     second = run_engine(logs_dir=logs_dir, out_dir=out_dir)
     second_snapshot = {
+        "idempotency_key": second["idempotency_key"],
         "summary": _load_json(Path(second["summary_path"])),
         "outcomes": _read_jsonl(Path(second["outcome_path"])),
         "mapping": _read_jsonl(Path(second["mapping_path"])),
@@ -72,6 +74,15 @@ def test_s6_017_same_output_target_keeps_summary_stable(tmp_path):
 
     assert _without_generated_at(first["summary"]) == _without_generated_at(second["summary"]), (
         "S6-017 violation: summary metrics changed after rerunning the same output target"
+    )
+
+
+def test_s6_017_same_output_target_keeps_idempotency_key_stable(tmp_path):
+    """Test ID S6-017: rerunning the same output target must keep idempotency_key stable."""
+    first, second = _run_same_target_twice(tmp_path)
+
+    assert first["idempotency_key"] == second["idempotency_key"], (
+        "S6-017 violation: idempotency_key changed after rerunning the same output target"
     )
 
 

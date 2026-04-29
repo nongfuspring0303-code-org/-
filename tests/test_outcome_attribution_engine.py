@@ -107,6 +107,11 @@ def log_trust_schema() -> dict:
 
 
 @pytest.fixture(scope="module")
+def log_trust_report(engine_result) -> dict:
+    return _load_json(Path(engine_result["trust_path"]))
+
+
+@pytest.fixture(scope="module")
 def expected_outcomes_contract() -> dict:
     return _load_yaml(FIXTURES_DIR / "expected_outcomes.yaml")
 
@@ -260,6 +265,8 @@ def test_join_key_missing_is_invalid(opportunity_outcomes):
     assert outcome is not None
     assert outcome["data_quality"] == "invalid"
     assert outcome["outcome_status"] == "invalid_join_key"
+    assert outcome.get("primary_failure_reason") == "join_key_missing"
+    assert outcome.get("failure_reasons", []) == ["join_key_missing"]
 
 
 def test_join_key_missing_mapping_status(mapping_attributions):
@@ -268,6 +275,17 @@ def test_join_key_missing_mapping_status(mapping_attributions):
     assert rec is not None
     assert rec["mapping_status"] == "join_key_missing"
     assert rec["mapping_failure_reason"] == "join_key_missing"
+
+
+def test_join_key_missing_trust_report_counts(log_trust_report):
+    """Incomplete join keys must be counted as invalid in log trust."""
+    assert log_trust_report["join_key_valid_count"] == 23
+    assert log_trust_report["join_key_invalid_count"] == 1
+    rec = next(
+        r for r in log_trust_report["records"] if r["opportunity_id"] == "opp-000012"
+    )
+    assert rec["join_key_valid"] is False
+    assert "event_hash" in rec.get("missing_join_fields", [])
 
 
 def test_symbol_missing_is_invalid(opportunity_outcomes):

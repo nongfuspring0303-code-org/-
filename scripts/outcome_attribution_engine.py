@@ -383,11 +383,20 @@ def _normalize_gate_result(raw: str) -> Optional[str]:
 
 
 def _make_join_key(record: dict) -> Optional[str]:
-    """Create a join key from trace_id and event_hash."""
+    """Create a join key from trace_id and event_hash.
+
+    A complete join key requires both fields. If only one field is present,
+    return a partial key so the record can still be grouped for auditing,
+    but the record will be marked join_key_invalid downstream.
+    """
     tid = record.get("trace_id", "")
     ehash = record.get("event_hash", "")
-    if tid or ehash:
+    if tid and ehash:
         return f"{tid}|{ehash}"
+    if tid:
+        return f"{tid}|"
+    if ehash:
+        return f"|{ehash}"
     return None
 
 
@@ -1040,7 +1049,7 @@ def run_engine(
             })
 
         # Check join key validity
-        join_key_valid = bool(key and key != "|")
+        join_key_valid = bool(joined.get("trace_id") and joined.get("event_hash"))
         missing_join_fields: list[str] = []
         if not joined.get("trace_id"):
             missing_join_fields.append("trace_id")

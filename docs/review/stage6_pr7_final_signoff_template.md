@@ -113,7 +113,7 @@ PR-7 Final 不允许新增或修改以下内容：
 | `configs/metric_dictionary.yaml` | Stage6 metrics + legacy compatibility 保留 | ☐ PASS / ☐ FAIL | 指标字典 |
 | `module-registry.yaml` | Stage6 module / contract_artifacts 绑定完整 | ☐ PASS / ☐ FAIL | registry 一致性 |
 | `docs/tasks/stage6-pr7-outcome-attribution.md` | PR-7a / PR-7b / Final 口径一致 | ☐ PASS / ☐ FAIL | taskbook |
-| `docs/review/pr7_rules_test_mapping.md` | PR-7a complete / PR-7b planned 表述清晰 | ☐ PASS / ☐ FAIL | rule ↔ test traceability |
+| `docs/review/pr7_rules_test_mapping.md` | PR-7a complete 与 PR-7b implemented/planned 状态表述准确 | ☐ PASS / ☐ FAIL | rule ↔ test traceability |
 
 ---
 
